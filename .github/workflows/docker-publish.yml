@@ -62,8 +62,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             TDL_VERSION=${{ github.event.inputs.tdl_version || 'latest' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
 
       - name: Print image summary
         run: |
