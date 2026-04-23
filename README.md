@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🎬 TG-DL - Telegram 文件/视频下载工具
 
 <p align="center">
@@ -175,3 +176,6 @@ MIT License - 仅供学习研究使用
 <p align="center">
   <sub>Made with ❤️ by <a href="https://github.com/RDevils7">RDevils7</a></sub>
 </p>
+=======
+# TgDl
+>>>>>>> a9c730f7ceee28074c03ea87ffc15b7173d80e48
