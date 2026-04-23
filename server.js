@@ -62,6 +62,20 @@ const defaultConfig = {
         loggedIn: false,
         checkedAt: null,
         info: ''
+    },
+    download: {
+        quality: '',           // 空 = 原始
+        limit: 2,
+        threads: 4,
+        include: '',
+        exclude: '',
+        desc: false,
+        skipSame: true,
+        group: false,
+        rewriteExt: false,
+        template: '',
+        delay: '',
+        reconnect: ''
     }
 };
 
@@ -78,7 +92,8 @@ function loadConfig() {
                 ...defaultConfig,
                 ...loaded,
                 proxy: { ...defaultConfig.proxy, ...(loaded.proxy || {}) },
-                loginStatus: { ...defaultConfig.loginStatus, ...(loaded.loginStatus || {}) }
+                loginStatus: { ...defaultConfig.loginStatus, ...(loaded.loginStatus || {}) },
+                download: { ...defaultConfig.download, ...(loaded.download || {}) }
             };
         }
     } catch (e) {
@@ -140,6 +155,37 @@ function getProxyArg() {
     return `${proto}://${auth}${cfg.host}:${cfg.port}`;
 }
 
+// ==================== 下载默认配置 ====================
+
+function getDlConfig() {
+    return appConfig.download || { ...defaultConfig.download };
+}
+
+app.get('/api/download-settings', (req, res) => {
+    res.json(getDlConfig());
+});
+
+app.post('/api/download-settings', (req, res) => {
+    const dl = req.body;
+    appConfig.download = {
+        quality: typeof dl.quality === 'string' ? dl.quality : '',
+        limit: parseInt(dl.limit) || 2,
+        threads: parseInt(dl.threads) || 4,
+        include: (dl.include || '').trim(),
+        exclude: (dl.exclude || '').trim(),
+        desc: !!dl.desc,
+        skipSame: dl.skipSame !== false,
+        group: !!dl.group,
+        rewriteExt: !!dl.rewriteExt,
+        template: (dl.template || '').trim(),
+        delay: (dl.delay || '').trim(),
+        reconnect: (dl.reconnect || '').trim()
+    };
+    saveConfig(appConfig);
+    console.log(`[download-settings] 已保存全局默认配置`);
+    res.json({ success: true });
+});
+
 /**
  * 解析 Telegram 链接
  */
@@ -169,7 +215,8 @@ app.post('/api/proxy', (req, res) => {
     const { enabled, protocol, host, port, username, password } = req.body;
     setProxyConfig({ enabled, protocol, host, port, username, password });
     
-    const usingProxy = proxyConfig.enabled && proxyConfig.host && proxyConfig.port;
+    const cfg = getProxyConfig();
+    const usingProxy = cfg.enabled && cfg.host && cfg.port;
     res.json({
         success: true,
         message: usingProxy ? `已设置代理 ${protocol}://${host}:${port}` : '直连模式'
@@ -682,10 +729,9 @@ app.post('/api/test-connection', async (req, res) => {
 });
 
 /**
- * POST /api/parse - 解析链接 + 获取文件列表
- * 使用 tdl dl --serve 来获取信息
+ * POST /api/parse - 解析链接
  */
-app.post('/api/parse', async (req, res) => {
+app.post('/api/parse', (req, res) => {
     const { url } = req.body;
 
     if (!url) return res.status(400).json({ error: '请提供链接' });
@@ -693,28 +739,49 @@ app.post('/api/parse', async (req, res) => {
     const parsed = parseTelegramUrl(url);
     if (!parsed) return res.status(400).json({ error: '无法识别的链接格式' });
 
-    // 返回解析结果给前端（实际下载时才调 tdl）
     res.json({
         success: true,
         parsed,
         data: {
-            files: null,  // tdl 不需要预先知道文件列表，直接下载即可
-            messageText: null,
-            useTdl: true   // 标记使用 tdl 模式
+            files: null,
+            useTdl: true
         },
-        url: url  // 把原始 URL 也传回前端
+        url: url
     });
 });
+
+// ==================== 下载任务 ====================
 
 /**
  * POST /api/download - 启动 tdl 下载任务
  */
 app.post('/api/download', async (req, res) => {
-    const { urls, quality, taskId: existingId } = req.body;
+    const { 
+        urls, quality, taskId: existingId,
+        limit, threads, include, exclude,
+        desc, skipSame, group, rewriteExt,
+        template, delay, reconnect
+    } = req.body;
 
     const id = existingId || uuidv4();
     const taskDir = path.join(DOWNLOAD_DIR, id);
     if (!fs.existsSync(taskDir)) fs.mkdirSync(taskDir, { recursive: true });
+
+    // 收集所有下载选项
+    const downloadOptions = {
+        quality: quality || 'source',
+        limit: parseInt(limit) || 2,
+        threads: parseInt(threads) || 4,
+        include: include || '',
+        exclude: exclude || '',
+        desc: !!desc,
+        skipSame: skipSame !== false,   // 默认开启
+        group: !!group,
+        rewriteExt: !!rewriteExt,
+        template: template || '',
+        delay: delay || '',
+        reconnect: reconnect || ''
+    };
 
     // 初始化任务
     const task = {
@@ -730,9 +797,10 @@ app.post('/api/download', async (req, res) => {
         totalFiles: 0,
         completedFiles: 0,
         startTime: Date.now(),
-        quality: quality || 'source',
         urls: urls || [],
-        log: []
+        options: downloadOptions,
+        log: [],
+        ttyOutput: ''          // tdl 原始终端输出（用于 TTY 嵌入显示）
     };
     tasks.set(id, task);
 
@@ -819,16 +887,67 @@ function startTdlDownload(taskId, taskDir) {
     const task = tasks.get(taskId);
     if (!task) return;
 
+    const opt = task.options || {};
+
     task.status = 'downloading';
-    addLog(task, '正在启动 tdl 下载引擎...');
+    const startMsg = '正在启动 tdl 下载引擎...';
+    addLog(task, startMsg);
+    // 同步到 TTY 输出，确保前端能立即看到启动信息
+    task.ttyOutput = `[${new Date().toLocaleTimeString('zh-CN')}] ${startMsg}\n`;
 
     // 构建 tdl 命令参数
     const args = [
         'dl',
         '-u', task.urls[0],  // 主 URL
         '-d', taskDir,       // 输出目录
-        '--continue'          // 断点续传
+        '--continue'          // 断点续传（默认开启）
     ];
+
+    // --- 并发控制 ---
+    if (opt.limit && opt.limit > 0) {
+        args.push('-l', String(opt.limit));
+    }
+    if (opt.threads && opt.threads > 0) {
+        args.push('-t', String(opt.threads));
+    }
+
+    // --- 文件过滤 ---
+    if (opt.include) {
+        args.push('-i', opt.include);
+    }
+    if (opt.exclude) {
+        args.push('-e', opt.exclude);
+    }
+
+    // --- 开关选项 ---
+    if (opt.desc) {
+        args.push('--desc');
+        addLog(task, '下载顺序: 从新到旧');
+    }
+    if (opt.skipSame) {
+        args.push('--skip-same');
+    }
+    if (opt.group) {
+        args.push('--group');
+        addLog(task, '已开启自动分组下载');
+    }
+    if (opt.rewriteExt) {
+        args.push('--rewrite-ext');
+        addLog(task, '已开启扩展名修正');
+    }
+
+    // --- 文件名模板 ---
+    if (opt.template) {
+        args.push('--template', opt.template);
+    }
+
+    // --- 高级选项 ---
+    if (opt.delay) {
+        args.push('--delay', opt.delay);
+    }
+    if (opt.reconnect) {
+        args.push('--reconnect-timeout', opt.reconnect);
+    }
 
     // 添加代理参数
     const proxyAddr = getProxyArg();
@@ -857,6 +976,11 @@ function startTdlDownload(taskId, taskDir) {
     tdlProcess.stdout.on('data', (data) => {
         const text = data.toString();
         fullStdout += text;
+        
+        // 追加到 TTY 输出（去 ANSI 码后存入，限制总长度防内存膨胀）
+        const cleanText = stripAnsi(text);
+        task.ttyOutput = (task.ttyOutput + cleanText).slice(-50000);
+
         buffer += text;
         
         // 逐行处理
@@ -871,6 +995,11 @@ function startTdlDownload(taskId, taskDir) {
     tdlProcess.stderr.on('data', (data) => {
         const text = data.toString();
         fullStderr += text;
+
+        // 追加到 TTY 输出
+        const cleanText = stripAnsi(text);
+        task.ttyOutput = (task.ttyOutput + cleanText).slice(-50000);
+
         buffer += text;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
@@ -891,7 +1020,18 @@ function startTdlDownload(taskId, taskDir) {
         task.fullStderr = fullStderr.slice(-5000);
 
         if (code === 0) {
+            // 将 tdl 的原始输出也追加到 TTY（用户可以看到完整过程）
+            if (fullStdout) {
+                const cleanStdout = stripAnsi(fullStdout);
+                task.ttyOutput = (task.ttyOutput + '\n--- tdl 输出 ---\n' + cleanStdout + '\n--- 结束 ---').slice(-50000);
+            }
             finishTask(task, taskDir);
+            
+            // 如果完成了但没有文件，添加警告
+            if (!task.downloadedFiles || task.downloadedFiles.length === 0) {
+                addLog(task, '⚠️ 未下载任何文件（消息可能已被删除或无媒体附件）');
+                task.status = 'completed';
+            }
         } else {
             task.status = 'error';
             
@@ -932,76 +1072,115 @@ function startTdlDownload(taskId, taskDir) {
 
 /**
  * 解析 tdl 的输出行，提取进度信息
+ * 
+ * tdl v0.20.2 实际输出格式：
+ *   国产熟女(1842682231):15581 -> dow~ ... 70.5% [#####...] [4.79 MB in 11.2s; ~ETA: 5s; 437.03 KB/s]
+ *   国产熟女(1842682231):15581 -> dow~ ... done! [6.79 MB in 12.1s; 568.92 KB/s]
+ *   CPU: 0.00% Memory: 22.33 MB Goroutines: 50
  */
 function parseTdlOutput(line, task) {
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    // 记录日志
-    if (trimmed.length < 200) {
-        addLog(task, trimmed);
+    // 跳过 ANSI 转义码纯行
+    if (/^\x1b\[/.test(trimmed) && trimmed.length < 10) return;
+
+    // 去除 ANSI 转义码后再处理
+    const clean = stripAnsi(trimmed);
+    
+    // 记录日志（跳过 CPU/Memory/Goroutines 重复状态行）
+    if (clean.length < 200 && !/^CPU:/i.test(clean)) {
+        addLog(task, clean);
     }
 
-    // tdl 进度格式示例：
-    // [2024/01/01 12:00:00] [DOWNLOAD] file.mp4  45.23MB / 100.50MB (45%)  5.20MB/s
-    // [DOWNLOAD] xxx.mp4  10.2MB / 50.3MB (20.3%)
-    // Downloading: video.mp4 (45.2MB / 100.5MB, 45%)
+    // ====== 匹配 tdl 进度行（核心格式）======
+    // 格式: ... XX.X% [...] [X.XX MB in Xs; ~ETA: Xs; XXX KB/s]
+    // 或:   ... done! [X.XX MB in Xs; XXX KB/s]
 
-    // 匹配进度行：包含 MB/MB 和百分比
-    const progressRegex = /([\d.]+)\s*(?:KB|MB|GB)?\s*\/\s*([\d.]+)\s*(KB|MB|GB)?.*?\((\d+)[%.%]\)/i;
-    const match = trimmed.match(progressRegex);
+    // 先检测完成
+    if (/\bdone\b/i.test(clean)) {
+        task.status = 'downloading';
+        // done 行中提取最终大小
+        const doneSizeMatch = clean.match(/\[(\d+\.?\d*\s*[KMGT]?B)\s+in\s+[^\]]+\]/);
+        if (doneSizeMatch) {
+            const sizeStr = doneSizeMatch[1];
+            task.downloadedBytes = parseSizeStr(sizeStr);
+            if (!task.totalBytes || task.totalBytes < task.downloadedBytes) {
+                task.totalBytes = task.downloadedBytes;
+            }
+        }
+        // 提取完成时的速度
+        const doneSpeedMatch = clean.match(/;\s*([\d.]+\s*[KMGT]?B\/s)/i);
+        if (doneSpeedMatch) task.speedStr = doneSpeedMatch[1];
+        return;
+    }
 
-    if (match) {
-        let downloaded = parseFloat(match[1]);
-        let total = parseFloat(match[2]);
-        const unit = match[3] || 'MB';  // 默认单位
+    // 匹配百分比进度行
+    const pctMatch = clean.match(/(\d+\.?\d*)%\s*\[([#\.]+)\]\s*\[([^\]]+)\]/);
+    if (pctMatch) {
+        const pct = parseFloat(pctMatch[1]);
+        const detail = pctMatch[3]; // "4.79 MB in 11.2s; ~ETA: 5s; 437.03 KB/s"
 
-        // 统一转换为字节
-        const multiplier = { KB: 1024, MB: 1048576, GB: 1073741824 };
-        downloaded *= (multiplier[unit] || 1);
-        total *= (multiplier[unit] || 1);
+        task.progress = Math.round(pct);
 
-        const pct = Math.round((downloaded / total) * 100);
-
-        task.downloadedBytes = downloaded;
-        task.totalBytes = total;
-        task.progress = pct;
-
-        // 提取速度
-        const speedMatch = trimmed.match(/([\d.]+\s*[KMGT]?B\/s)/i);
-        if (speedMatch) {
-            task.speedStr = speedMatch[1];
+        // 从 detail 中提取已下载大小
+        const sizeMatch = detail.match(/^(\d+\.?\d*\s*[KMGT]?B)/i);
+        if (sizeMatch) {
+            task.downloadedBytes = parseSizeStr(sizeMatch[1]);
         }
 
-        // 提取当前文件名
-        const fileMatch = trimmed.match(/(?:Downloading|DOWNLOAD|[\w.-]+\.(mp4|mkv|avi|pdf|zip|rar|doc|xls|ppt|mp3|apk|exe|jpg|png|gif))/i);
+        // 提取速度
+        const speedMatch = detail.match(/;\s*([\d.]+\s*[KMGT]?B\/s)/i);
+        if (speedMatch) task.speedStr = speedMatch[1];
+
+        // 提取文件名（在 -> 和 ... 之间）
+        const fileMatch = clean.match(/->\s*(.+?)\s*\.\.\./);
         if (fileMatch) {
-            task.currentFile = fileMatch[0].split(/\s+/).pop() || fileMatch[0];
-            if (!task.fileName || task.fileName === '--') {
-                task.fileName = task.currentFile;
+            let fname = fileMatch[1].trim();
+            // 去掉末尾截断标记
+            if (fname.endsWith('~')) fname = fname.slice(0, -1).trimEnd();
+            if (fname && fname !== '...') {
+                task.currentFile = fname;
+                if (!task.fileName || task.fileName === '--') {
+                    task.fileName = fname;
+                }
             }
         }
 
         task.status = 'downloading';
+        return;
     }
 
-    // 检测完成关键词
-    if (/done|completed|finished|完成|success|all.*downloaded/i.test(trimmed) && !/error|fail/i.test(trimmed)) {
-        // 可能是单个文件完成或全部完成
-    }
-
-    // 检测新文件开始下载
-    const newFileMatch = trimmed.match(/start.*?(?:downloading|download).*?["']?([^"'\s]+\.[^"'\s]+)["']?/i)
-                      || trimmed.match(/["']([^"']+\.(?:mp4|mkv|pdf|zip|rar|doc|mp3|...))["']/i);
-    if (newFileMatch) {
-        const fname = newFileMatch[1];
-        task.currentFile = fname;
-        if (!task.fileNames.includes(fname)) {
-            task.fileNames.push(fname);
+    // 检测新文件开始（tdl 可能输出新文件信息）
+    const newFileMatch = clean.match(/->\s*(.+?)(?:\s+\.\.\.)?\s+\d/);
+    if (newFileMatch && newFileMatch[1] && newFileMatch[1] !== '...') {
+        let fname = newFileMatch[1].trim().replace(/~$/, '');
+        if (fname && fname.length > 2 && fname.length < 200) {
+            task.currentFile = fname;
+            if (!task.fileNames.includes(fname)) {
+                task.fileNames.push(fname);
+            }
+            task.totalFiles = task.fileNames.length;
         }
-        task.totalFiles = task.fileNames.length;
     }
 }
+
+/**
+ * 将大小字符串转换为字节数
+ * 例如: "4.79 MB" → 5022208, "6.79 MB" → 7120179
+ */
+function parseSizeStr(str) {
+    const match = str.match(/^(\d+\.?\d*)\s*(B|KB|MB|GB|TB)?$/i);
+    if (!match) return 0;
+    const num = parseFloat(match[1]);
+    const unit = (match[2] || 'B').toUpperCase();
+    const multipliers = { B: 1, KB: 1024, MB: 1048576, GB: 1073741824, TB: 1099511627776 };
+    return num * (multipliers[unit] || 1);
+}
+
+/**
+ * 去除 ANSI 转义码
+ */
 
 /**
  * 完成任务
@@ -1051,9 +1230,12 @@ function scanDownloadedFiles(task, taskDir) {
  */
 function addLog(task, msg) {
     const time = new Date().toLocaleTimeString('zh-CN');
-    task.log.push(`[${time}] ${msg}`);
+    const logEntry = `[${time}] ${msg}`;
+    task.log.push(logEntry);
     // 保留最近 200 条
     if (task.log.length > 200) task.log.shift();
+    // 同步写入 TTY 输出（确保前端终端能显示关键状态信息）
+    task.ttyOutput = (task.ttyOutput || '') + logEntry + '\n';
 }
 
 // ==================== 工具函数 ====================

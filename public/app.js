@@ -266,6 +266,102 @@ async function loadProxyFromBackend() {
     }
 }
 
+// ==================== 全局下载默认设置 ====================
+
+/**
+ * 从后端加载全局下载默认设置，填入设置侧栏
+ */
+async function loadDlSettings() {
+    try {
+        const res = await fetch('/api/download-settings');
+        const dl = await res.json();
+
+        // 填入设置侧栏
+        if (dl.quality !== undefined && dl.quality !== null) $('#setDefaultQuality').value = dl.quality || '';
+        if (dl.limit) $('#setDefaultLimit').value = dl.limit;
+        if (dl.threads) $('#setDefaultThreads').value = dl.threads;
+        if (dl.include !== undefined) $('#setDefaultInclude').value = dl.include || '';
+        if (dl.exclude !== undefined) $('#setDefaultExclude').value = dl.exclude || '';
+        $('#setDefaultDesc').checked = !!dl.desc;
+        $('#setDefaultSkipSame').checked = dl.skipSame !== false;  // 默认 true
+        if (dl.group !== undefined && dl.group !== null) $('#setDefaultGroup').value = dl.group ? 'true' : '';
+        $('#setDefaultRewriteExt').checked = !!dl.rewriteExt;
+        if (dl.template !== undefined) $('#setDefaultTemplate').value = dl.template || '';
+        if (dl.delay !== undefined) $('#setDefaultDelay').value = dl.delay || '';
+        if (dl.reconnect !== undefined) $('#setDefaultReconnect').value = dl.reconnect || '';
+
+        // 同步下载面板的「跟随」提示文字
+        updateDlPanelPlaceholder(dl);
+
+        // 同步下载面板的 checkbox 状态（与全局默认一致）
+        const dlGroupEl = $('#dlGroup');
+        if (dlGroupEl) dlGroupEl.checked = !!dl.group;
+
+        console.log('[dl-settings] 全局默认配置已加载');
+    } catch (e) {
+        console.warn('[dl-settings] 加载失败:', e);
+    }
+}
+
+/**
+ * 保存下载默认设置到后端
+ */
+async function saveDlSettings() {
+    const config = {
+        quality: $('#setDefaultQuality').value,
+        limit: parseInt($('#setDefaultLimit').value) || 2,
+        threads: parseInt($('#setDefaultThreads').value) || 4,
+        include: $('#setDefaultInclude').value.trim(),
+        exclude: $('#setDefaultExclude').value.trim(),
+        desc: $('#setDefaultDesc').checked,
+        skipSame: $('#setDefaultSkipSame').checked,
+        group: $('#setDefaultGroup').value === 'true',
+        rewriteExt: $('#setDefaultRewriteExt').checked,
+        template: $('#setDefaultTemplate').value.trim(),
+        delay: $('#setDefaultDelay').value.trim(),
+        reconnect: $('#setDefaultReconnect').value.trim()
+    };
+
+    try {
+        const res = await fetch('/api/download-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showDlSettingsHint('✅ 下载设置已保存', 'success');
+            // 同时更新下载面板的「跟随」提示
+            updateDlPanelPlaceholder(config);
+        } else {
+            showDlSettingsHint('❌ 保存失败', 'error');
+        }
+    } catch (e) {
+        showDlSettingsHint('❌ 网络错误: ' + e.message, 'error');
+    }
+}
+
+function showDlSettingsHint(msg, type) {
+    const el = $('#dlSettingsSavedHint');
+    el.textContent = msg;
+    el.className = `conn-test-result ${type === 'success' ? 'conn-test-ok' : 'conn-test-err'}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+/**
+ * 更新下载面板中「跟随全局设置」的提示文案
+ */
+function updateDlPanelPlaceholder(globalCfg) {
+    globalCfg = globalCfg || {};
+    const qVal = globalCfg.quality || '原始';
+    // 更新 qualitySelect 第一个选项的文字
+    const firstOpt = $('#qualitySelect option[value=""]');
+    if (firstOpt) {
+        firstOpt.textContent = `跟随全局设置 (${qVal === '' ? '原始' : qVal})`;
+    }
+}
+
 // ==================== 链接解析 ====================
 
 async function parseLink() {
@@ -317,7 +413,6 @@ function renderTdlParseResult(data) {
     const container = $('#parseResult');
     const { parsed, url } = data;
     
-    // 检测是否为 tdl 模式
     const isTdlMode = data.data && data.data.useTdl === true;
 
     let html = '';
@@ -491,15 +586,36 @@ async function startDownload() {
         const isTdl = state.selectedFile.isTdlMode === true;
 
         if (isTdl) {
-            // tdl 模式：发送 URL 列表给后端
+            // 读取下载面板的临时值
+            const panelQuality = $('#qualitySelect').value;
+            const panelGroup = $('#dlGroup').checked;
+
+            // 构建最终下载参数：下载面板值优先，空/未设置时 fallback 到全局默认
+            const dlOptions = {
+                urls: state.selectedFile.urls,
+                // 画质：面板选了就用面板的（空=跟随），否则用全局
+                quality: panelQuality || ($('#setDefaultQuality') ? $('#setDefaultQuality').value : '') || 'source',
+                taskId: state.taskId,
+                // 全局默认值（下载面板没有这些控件了）
+                limit: ($('#setDefaultLimit') ? $('#setDefaultLimit').value : '2') || '2',
+                threads: ($('#setDefaultThreads') ? $('#setDefaultThreads').value : '4') || '4',
+                include: ($('#setDefaultInclude') ? $('#setDefaultInclude').value.trim() : ''),
+                exclude: ($('#setDefaultExclude') ? $('#setDefaultExclude').value.trim() : ''),
+                desc: ($('#setDefaultDesc') ? $('#setDefaultDesc').checked : false),
+                skipSame: ($('#setDefaultSkipSame') ? $('#setDefaultSkipSame').checked : true),
+                // 自动分组：面板 checkbox 优先于全局
+                group: panelGroup !== undefined ? panelGroup : (($('#setDefaultGroup') ? $('#setDefaultGroup').value === 'true' : false)),
+                rewriteExt: ($('#setDefaultRewriteExt') ? $('#setDefaultRewriteExt').checked : false),
+                template: ($('#setDefaultTemplate') ? $('#setDefaultTemplate').value.trim() : ''),
+                delay: ($('#setDefaultDelay') ? $('#setDefaultDelay').value.trim() : ''),
+                reconnect: ($('#setDefaultReconnect') ? $('#setDefaultReconnect').value.trim() : '')
+            };
+
+            // tdl 模式：发送 URL 列表和所有选项给后端
             const res = await fetch('/api/download', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    urls: state.selectedFile.urls,
-                    quality: $('#qualitySelect').value,
-                    taskId: state.taskId
-                })
+                body: JSON.stringify(dlOptions)
             });
 
             const data = await res.json();
@@ -575,134 +691,169 @@ function connectProgressStream(taskId) {
     }
 }
 
+// 上一次 TTY 输出的长度（用于增量更新，避免重复渲染整个文本）
+let _lastTtyLen = 0;
+
 function handleProgressUpdate(progress) {
     if (progress.error) {
         const detail = progress.errorDetail ? `\n${progress.errorDetail}` : '';
         updateStatus('error', progress.error + detail);
+        appendTtyOutput(`\n❌ ${progress.error}${detail}\n`, 'tty-error');
         return;
     }
 
-    // 更新文件名
-    if (progress.fileName && progress.fileName !== '--') {
+    // ===== TTY 终端输出（核心显示方式）======
+    if (progress.ttyOutput && progress.ttyOutput.length > _lastTtyLen) {
+        const newText = progress.ttyOutput.substring(_lastTtyLen);
+        _lastTtyLen = progress.ttyOutput.length;
+        appendTtyOutput(newText, null);  // null = 自动检测高亮
+    } else if (progress.ttyOutput !== undefined) {
+        // ttyOutput 存在但没增长（可能被重置了或首次为空）
+        console.log('[TTY] 跳过 - ttyOutput 长度未超过 _lastTtyLen:', progress.ttyOutput.length, '<=', _lastTtyLen);
+    }
+
+    // 文件名更新
+    if (progress.currentFile && progress.currentFile !== '--') {
+        $('#fileName').textContent = progress.currentFile;
+    } else if (progress.fileName && progress.fileName !== '--') {
         $('#fileName').textContent = progress.fileName;
     }
-    
-    // tdl 模式：显示当前正在下载的文件
-    if (progress.currentFile) {
-        $('#fileName').textContent = progress.currentFile;
-    }
 
-    // 更新进度条
-    const pct = Math.min(progress.progress || 0, 100);
-    $('#progressBar').style.width = pct + '%';
-    $('#progressGlow').style.width = Math.min(pct + 5, 100) + '%';
-    $('#progressPercent').textContent = pct + '%';
-
-    // 文件大小
-    const total = progress.totalBytes || 0;
-    const downloaded = progress.downloadedBytes || 0;
-
-    if (total > 0 && downloaded > 0) {
-        $('#fileSize').textContent = `${formatSize(downloaded)} / ${formatSize(total)}`;
-        $('#downloadedSize').textContent = `${formatSize(downloaded)} / ${formatSize(total)}`;
-        $('#progressDetail').textContent = `已下载 ${formatSize(downloaded)}，共 ${formatSize(total)}`;
-    } else if (downloaded > 0) {
-        $('#fileSize').textContent = formatSize(downloaded);
-        $('#downloadedSize').textContent = formatSize(downloaded);
-        $('#progressDetail').textContent = `已下载 ${formatSize(downloaded)}...`;
-    } else {
-        $('#fileSize').textContent = '准备中...';
-        $('#downloadedSize').textContent = '等待中';
-    }
-
-    // 速度（tdl 格式或数字格式）
+    // 速度
     if (progress.speedStr) {
         $('#downloadSpeed').textContent = progress.speedStr;
-    } else if (progress.speed > 0) {
-        $('#downloadSpeed').textContent = formatSpeed(progress.speed);
     }
 
-    // 多文件进度信息
-    if (progress.totalFiles > 1) {
-        $('#progressDetail').textContent += ` · 第 ${progress.completedFiles || 0}/${progress.totalFiles} 个文件`;
-    }
-
-    // 状态
-    if (progress.status === 'downloading') {
-        updateStatus('downloading', '下载中...');
-    } else if (progress.status === 'completed') {
+    // 状态处理
+    if (progress.status === 'completed') {
         onDownloadComplete(progress);
     } else if (progress.status === 'error') {
         const detail = progress.errorDetail ? `\n${progress.errorDetail}` : '';
         updateStatus('error', (progress.error || '下载失败') + detail);
+        appendTtyOutput(`\n❌ 错误: ${progress.error || '下载失败'}${detail}\n`, 'tty-error');
         $('#downloadBtn').disabled = false;
         showEl('cancelBtn');
     } else if (progress.status === 'preparing') {
-        updateStatus('downloading', '准备下载资源...');
+        // 初始状态不覆盖
     }
 }
 
-function onDownloadComplete(progress) {
-    updateStatus('completed', '下载完成 ✓');
-    clearInterval(state.timerInterval);
-
-    // 最终数值
-    $('#progressBar').style.width = '100%';
-    $('#progressGlow').style.width = '100%';
-    $('#progressPercent').textContent = '100%';
-
-    if (progress.downloadedBytes) {
-        const size = formatSize(progress.downloadedBytes);
-        $('#fileSize').textContent = size;
-        $('#downloadedSize').textContent = size;
-        
-        // 多文件显示
-        if (progress.downloadedFiles && progress.downloadedFiles.length > 0) {
-            const fileCount = progress.downloadedFiles.length;
-            const names = progress.downloadedFiles.map(f => f.name).join(', ');
-            $('#fileName').textContent = `${fileCount} 个文件已下载`;
-            $('#progressDetail').textContent = `共 ${size} · ${fileCount} 个文件`;
-            
-            // 记录所有文件到历史
-            progress.downloadedFiles.forEach((f, i) => {
-                addToHistory({
-                    fileName: f.name,
-                    size: f.size,
-                    time: Date.now(),
-                    status: 'completed'
-                });
-            });
-        } else {
-            $('#progressDetail').textContent = `共 ${size}`;
-        }
-    }
+/**
+ * 追加文本到 TTY 终端输出区域
+ * @param {string} text - 原始文本
+ * @param {string|null} forceClass - 强制 CSS 类名（null=自动检测）
+ */
+function appendTtyOutput(text, forceClass) {
+    const el = $('#ttyOutput');
+    if (!el) return;
     
-    if (progress.fileName && (!progress.downloadedFiles || progress.downloadedFiles.length <= 1)) {
-        $('#progressDetail').textContent = `共 ${formatSize(progress.downloadedBytes || 0)}`;
+    if (!text) return;
+
+    let html = escapeHtml(text);
+
+    // 自动关键词高亮（除非强制指定了 class）
+    if (!forceClass) {
+        // 百分比: 70.5% → 蓝色高亮
+        html = html.replace(/(\d+\.?\d*)%/g, '<span class="tty-pct">$1%</span>');
+        // done! 完成 → 绿色
+        html = html.replace(/\bdone\b(!|\.|\s)/gi, '<span class="tty-done">done</span>$1');
+        // error / Error / failed / FAIL → 红色
+        html = html.replace(/\b(error|Error|ERR|failed|FAIL|fatal)\b/g, '<span class="tty-error">$1</span>');
+        // warn / Warn / WARNING → 黄色
+        html = html.replace(/\b(warn|Warn|WARNING)\b/g, '<span class="tty-warn">$1</span>');
+        // 速度: XXX KB/s MB/s GB/s → 青色
+        html = html.replace(/(\d+\.?\d*\s*[KMGT]?B\/s)/g, '<span class="tty-speed">$1</span>');
+        // 大小: X.XX MB/GB/KB in → 浅蓝
+        html = html.replace(/(\d+\.?\d*\s*[KMGT]?B)\s+in\s/g, '<span class="tty-speed">$1</span> in ');
+        // ETA
+        html = html.replace(/(~ETA[:\s]*)/g, '$1');
+    }
+
+    el.innerHTML += html;
+
+    // 自动滚动到底部
+    el.scrollTop = el.scrollHeight;
+}
+
+function onDownloadComplete(progress) {
+    clearInterval(state.timerInterval);
+    appendTtyOutput('\n', null);
+
+    // 显示完成统计摘要
+    showTtySummary(progress);
+
+    // 记录到历史
+    recordToHistory(progress);
+
+    // 更新文件名显示
+    if (progress.downloadedFiles && progress.downloadedFiles.length > 0) {
+        const fileCount = progress.downloadedFiles.length;
+        $('#fileName').textContent = `${fileCount} 个文件已下载`;
+    } else if (progress.downloadedBytes) {
+        $('#fileName').textContent = `下载完成 (${formatSize(progress.downloadedBytes)})`;
+    }
+
+    $('#downloadSpeed').textContent = '--';
+    
+    // 操作按钮
+    hideEl('cancelBtn');
+    showEl('newBtn');
+
+    if (progress.downloadedFiles && progress.downloadedFiles.length > 0) {
+        showMultiFileList(progress.id || state.taskId);
+    } else {
+        showEl('saveBtn');
+    }
+}
+
+/**
+ * 在 TTY 终端底部显示完成统计摘要
+ */
+function showTtySummary(progress) {
+    const summaryEl = $('#ttySummary');
+    if (!summaryEl) return;
+
+    const size = formatSize(progress.downloadedBytes || 0);
+    const fileCount = progress.downloadedFiles ? progress.downloadedFiles.length : 0;
+    const elapsed = state.downloadStartTime 
+        ? formatDuration(Date.now() - state.downloadStartTime) 
+        : '--';
+    const speed = progress.speedStr || '--';
+
+    summaryEl.classList.remove('hidden');
+    summaryEl.innerHTML = `
+        <div style="color:var(--accent-green);font-weight:600;font-size:0.9rem;margin-bottom:8px;">✅ 下载完成</div>
+        <div class="summary-row"><span class="summary-label">总大小</span><span class="summary-value">${size}</span></div>
+        <div class="summary-row"><span class="summary-label">文件数</span><span class="summary-value">${fileCount} 个</span></div>
+        <div class="summary-row"><span class="summary-label">耗时</span><span class="summary-value">${elapsed}</span></div>
+        <div class="summary-row"><span class="summary-label">最终速度</span><span class="summary-value">${speed}</span></div>
+    `;
+}
+
+/**
+ * 将完成结果记录到历史记录
+ */
+function recordToHistory(progress) {
+    if (!progress.downloadedFiles || progress.downloadedFiles.length === 0) {
+        // 无文件列表时用 task 级别信息
         addToHistory({
-            fileName: progress.fileName || 'unknown',
+            fileName: progress.currentFile || progress.fileName || 'unknown',
             size: progress.downloadedBytes || 0,
             time: Date.now(),
             status: 'completed'
         });
+        return;
     }
 
-    $('#downloadSpeed').textContent = '--';
-
-    // 显示操作按钮
-    hideEl('cancelBtn');
-    
-    if (progress.downloadedFiles && progress.downloadedFiles.length > 0) {
-        showEl('newBtn');
-        // 多文件时提供文件列表
-        showMultiFileList(progress.id || state.taskId);
-    } else {
-        showEl('saveBtn');
-        showEl('newBtn');
-    }
-
-    // 进度条动画效果
-    $('#progressBar').style.background = 'linear-gradient(135deg, var(--accent-green), #059669)';
+    // 多文件：逐个记录到历史
+    progress.downloadedFiles.forEach((f) => {
+        addToHistory({
+            fileName: f.name,
+            size: f.size || 0,
+            time: Date.now(),
+            status: 'completed'
+        });
+    });
 }
 
 /**
@@ -739,6 +890,7 @@ function showMultiFileList(taskId) {
 
 function updateStatus(status, text) {
     const el = $('#statusText');
+    if (!el) return;  // 元素不存在则跳过（兼容不同页面布局）
     el.textContent = text;
     el.className = 'status-value';
     
@@ -756,7 +908,8 @@ function startTimer() {
     clearInterval(state.timerInterval);
     state.timerInterval = setInterval(() => {
         if (state.downloadStartTime) {
-            $('#elapsedTime').textContent = formatDuration(Date.now() - state.downloadStartTime);
+            const el = $('#elapsedTime');
+            if (el) el.textContent = formatDuration(Date.now() - state.downloadStartTime);
         }
     }, 1000);
 }
@@ -818,16 +971,24 @@ function resetAll() {
 }
 
 function resetProgressUI() {
-    $('#progressBar').style.width = '0%';
-    $('#progressGlow').style.width = '0%';
-    $('#progressBar').style.background = '';
-    $('#progressPercent').textContent = '0%';
-    $('#progressDetail').textContent = '等待中...';
+    // TTY 终端重置
+    const ttyEl = $('#ttyOutput');
+    if (ttyEl) ttyEl.innerHTML = '';
+    const summaryEl = $('#ttySummary');
+    if (summaryEl) {
+        summaryEl.classList.add('hidden');
+        summaryEl.innerHTML = '';
+    }
+    _lastTtyLen = 0;
+
+    // 文件信息重置
     $('#fileName').textContent = '--';
-    $('#fileSize').textContent = '计算中...';
-    $('#downloadedSize').textContent = '0 B / 0 B';
     $('#downloadSpeed').textContent = '--';
-    $('#elapsedTime').textContent = '00:00';
+
+    // 隐藏操作按钮
+    hideEl('saveBtn');
+    hideEl('newBtn');
+    hideEl('cancelBtn');
     updateStatus('pending', '准备就绪');
     
     hideEl('saveBtn');
@@ -839,11 +1000,25 @@ function resetProgressUI() {
 // ==================== 历史记录 ====================
 
 function addToHistory(item) {
+    // 去重：同名 + 同时间（1秒内）的记录视为重复
+    const isDuplicate = state.history.some(h =>
+        h.fileName === item.fileName &&
+        Math.abs(h.time - item.time) < 1000
+    );
+    if (isDuplicate) return;
+
     state.history.unshift(item);
-    // 只保留最近 30 条
-    if (state.history.length > 30) state.history.pop();
+    // 只保留最近 50 条
+    if (state.history.length > 50) state.history.pop();
     
     localStorage.setItem('tg-dl-history', JSON.stringify(state.history));
+    renderHistory();
+}
+
+function clearHistory() {
+    if (!confirm('确定要清空所有下载历史记录吗？')) return;
+    state.history = [];
+    localStorage.setItem('tg-dl-history', '[]');
     renderHistory();
 }
 
@@ -861,7 +1036,12 @@ function renderHistory() {
     }
 
     container.className = 'history-list';
-    container.innerHTML = state.history.map(item => `
+    
+    // 标题行 + 清空按钮
+    let html = '<div class="history-header-row"><span class="history-count">共 ' + state.history.length + ' 条记录</span>';
+    html += '<button class="btn-clear-history" onclick="clearHistory()">🗑️ 清空</button></div>';
+    
+    html += state.history.map(item => `
         <div class="history-item">
             <span class="history-icon">${item.status === 'completed' ? '✅' : '❌'}</span>
             <div class="history-item-content">
@@ -873,6 +1053,8 @@ function renderHistory() {
             }</span>
         </div>
     `).join('');
+    
+    container.innerHTML = html;
 }
 
 function formatTime(ts) {
@@ -930,6 +1112,7 @@ function toggleSettings() {
         overlay.classList.add('active');
         // 打开时从后端加载最新配置
         loadProxyFromBackend();
+        loadDlSettings();  // 加载全局下载默认设置
     } else {
         sidebar.classList.remove('open');
         overlay.classList.remove('active');
@@ -1671,6 +1854,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 从后端加载代理配置
     await loadProxyFromBackend();
+
+    // 从后端加载全局下载默认设置（持久化恢复）
+    await loadDlSettings();
 
     // 检查登录状态
     try {

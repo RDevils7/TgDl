@@ -68,17 +68,28 @@
             <section id="optionsPanel" class="options-panel card hidden">
                 <h2>⚙️ 下载选项</h2>
                 <div class="options-grid">
-                    <div class="option-group">
-                        <label>画质选择（视频）</label>
-                        <select id="qualitySelect" class="styled-select">
-                            <option value="source">🔥 原始画质 (推荐)</option>
-                            <option value="hq">📺 高清</option>
-                            <option value="mq">📱 标清</option>
-                            <option value="lq">💾 流畅</option>
-                        </select>
+                    <div class="option-group dl-inline-row">
+                        <div class="option-sub" style="flex:1.5;">
+                            <label>🎬 画质选择</label>
+                            <select id="qualitySelect" class="styled-select">
+                                <option value="">跟随全局设置 ({{ 全局值 }})</option>
+                                <option value="source">🔥 原始画质</option>
+                                <option value="hq">📺 高清 720p</option>
+                                <option value="mq">📱 标清 480p</option>
+                                <option value="lq">💾 流畅 360p</option>
+                            </select>
+                        </div>
+                        <div class="option-sub" style="flex:0.8; display:flex; align-items:flex-end; padding-bottom:2px;">
+                            <label class="toggle-option" style="white-space:nowrap; font-size:0.84rem;">
+                                <span>📦 自动分组</span>
+                                <input type="checkbox" id="dlGroup" />
+                                <span class="toggle-switch-sm"></span>
+                            </label>
+                        </div>
                     </div>
+
                     <div class="option-group" id="fileListGroup" style="display:none;">
-                        <label>文件列表</label>
+                        <label>📂 文件列表</label>
                         <div id="fileList" class="file-list"></div>
                     </div>
                 </div>
@@ -91,41 +102,26 @@
             <section id="progressPanel" class="progress-panel card hidden">
                 <h2>📥 下载进度</h2>
                 
-                <!-- 文件信息 -->
+                <!-- 文件信息（精简） -->
                 <div id="fileInfo" class="file-info">
                     <div class="file-name" id="fileName">--</div>
                     <div class="file-meta">
-                        <span id="fileSize">计算中...</span>
                         <span id="downloadSpeed" class="speed-badge">--</span>
+                        <span id="elapsedTime" class="speed-badge"></span>
+                        <span id="statusText" class="status-value status-pending">准备就绪</span>
                     </div>
                 </div>
 
-                <!-- 进度条 -->
-                <div class="progress-wrapper">
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
-                        <div class="progress-bar-glow" id="progressGlow" style="width: 0%"></div>
+                <!-- TTY 终端输出区域 -->
+                <div class="tty-container" id="ttyContainer">
+                    <div class="tty-header">
+                        <span class="tty-dot tty-dot-red"></span>
+                        <span class="tty-dot tty-dot-yellow"></span>
+                        <span class="tty-dot tty-dot-green"></span>
+                        <span class="tty-title">tdl</span>
                     </div>
-                    <div class="progress-stats">
-                        <span class="progress-percent" id="progressPercent">0%</span>
-                        <span class="progress-detail" id="progressDetail">等待中...</span>
-                    </div>
-                </div>
-
-                <!-- 状态信息 -->
-                <div id="downloadStatus" class="status-info">
-                    <div class="status-row">
-                        <span class="status-label">状态</span>
-                        <span class="status-value status-pending" id="statusText">准备就绪</span>
-                    </div>
-                    <div class="status-row">
-                        <span class="status-label">已下载</span>
-                        <span class="status-value" id="downloadedSize">0 B / 0 B</span>
-                    </div>
-                    <div class="status-row">
-                        <span class="status-label">耗时</span>
-                        <span class="status-value" id="elapsedTime">00:00</span>
-                    </div>
+                    <pre class="tty-output" id="ttyOutput"></pre>
+                    <div class="tty-summary hidden" id="ttySummary"></div>
                 </div>
 
                 <!-- 操作按钮 -->
@@ -217,6 +213,105 @@
                     </div>
                     <div id="connTestResult" class="conn-test-result hidden"></div>
                 </div>
+            </div>
+
+            <!-- 全局下载默认设置 -->
+            <div class="settings-section">
+                <h3>⬇️ 下载默认设置</h3>
+                <p class="settings-section-hint">以下为全局默认值，可在下载页面临时覆盖</p>
+
+                <!-- 画质 + 自动分组（与下载面板对应） -->
+                <div class="set-dl-row set-dl-row-2col">
+                    <div class="option-sub">
+                        <label>默认画质</label>
+                        <select id="setDefaultQuality" class="styled-select">
+                            <option value="">跟随原始 (推荐)</option>
+                            <option value="source">🔥 原始画质</option>
+                            <option value="hq">📺 高清 720p</option>
+                            <option value="mq">📱 标清 480p</option>
+                            <option value="lq">💾 流畅 360p</option>
+                        </select>
+                    </div>
+                    <div class="option-sub">
+                        <label>自动分组下载</label>
+                        <select id="setDefaultGroup" class="styled-select">
+                            <option value="">关闭</option>
+                            <option value="true">开启</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 并发控制 -->
+                <div class="set-dl-row set-dl-row-2col">
+                    <div class="option-sub">
+                        <label>并发任务数</label>
+                        <input type="number" id="setDefaultLimit" class="styled-input-sm" value="2" min="1" max="16" />
+                    </div>
+                    <div class="option-sub">
+                        <label>单文件线程数</label>
+                        <input type="number" id="setDefaultThreads" class="styled-input-sm" value="4" min="1" max="16" />
+                    </div>
+                </div>
+
+                <!-- 文件过滤 -->
+                <div class="set-dl-row set-dl-row-2col">
+                    <div class="option-sub">
+                        <label>包含文件类型</label>
+                        <input type="text" id="setDefaultInclude" class="styled-input-sm" placeholder="留空 = 全部" />
+                    </div>
+                    <div class="option-sub">
+                        <label>排除文件类型</label>
+                        <input type="text" id="setDefaultExclude" class="styled-input-sm" placeholder="留空 = 不排除" />
+                    </div>
+                </div>
+
+                <!-- 开关选项 -->
+                <div class="set-dl-toggles">
+                    <label class="toggle-option">
+                        <span>从新到旧下载</span>
+                        <input type="checkbox" id="setDefaultDesc" />
+                        <span class="toggle-switch-sm"></span>
+                    </label>
+                    <label class="toggle-option">
+                        <span>跳过重复文件</span>
+                        <input type="checkbox" id="setDefaultSkipSame" checked />
+                        <span class="toggle-switch-sm"></span>
+                    </label>
+                    <label class="toggle-option">
+                        <span>修正文件扩展名</span>
+                        <input type="checkbox" id="setDefaultRewriteExt" />
+                        <span class="toggle-switch-sm"></span>
+                    </label>
+                </div>
+
+                <!-- 高级选项折叠 -->
+                <details class="advanced-options" style="margin-top:8px;">
+                    <summary>高级选项</summary>
+                    <div class="advanced-body">
+                        <div class="option-group">
+                            <label>文件名模板</label>
+                            <input type="text" id="setDefaultTemplate" class="styled-input"
+                                   placeholder="{{ .DialogID }}_{{ .MessageID }}_{{ .FileName }}" />
+                        </div>
+                        <div class="set-dl-row set-dl-row-2col">
+                            <div class="option-sub">
+                                <label>任务间隔延迟</label>
+                                <input type="text" id="setDefaultDelay" class="styled-input-sm" placeholder="0s / 500ms" />
+                            </div>
+                            <div class="option-sub">
+                                <label>重连超时</label>
+                                <input type="text" id="setDefaultReconnect" class="styled-input-sm" placeholder="5m0s" />
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="proxy-actions" style="margin-top:12px; border-top:1px solid rgba(255,255,255,0.06); padding-top:12px;">
+                    <button class="btn-primary btn-save-proxy" onclick="saveDlSettings()" style="width:100%;">
+                        💾 保存下载设置
+                    </button>
+                </div>
+                <div id="dlSettingsSavedHint" class="conn-test-result hidden"></div>
             </div>
         </aside>
 

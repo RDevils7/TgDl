@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🎬 TG-DL - Telegram 文件/视频下载工具
 
 <p align="center">
@@ -15,6 +14,7 @@
 | 📹 **视频下载** | 支持 MP4 视频，可选择画质（原始/高清/标清/流畅） |
 | 📄 **文件下载** | 支持文档、压缩包、图片等各类文件类型 |
 | 📊 **实时进度** | SSE (Server-Sent Events) 实时推送，显示速度/百分比/已下载大小 |
+| 🖥️ **TTY 终端** | 内嵌终端输出区域，实时展示 tdl 引擎完整运行日志和下载过程 |
 | 🔐 **Telegram 登录** | 支持验证码登录 + 扫码登录两种方式（需 [tdl](https://github.com/tyler1234/tdl)） |
 | 🌐 **代理支持** | HTTP/HTTPS/SOCKS5 代理，支持用户名密码认证 |
 | 📜 **历史记录** | 本地存储下载历史，方便回顾 |
@@ -91,7 +91,7 @@ TDL_PATH="D:\tools\tdl.exe" npm start
 ```
 1. 粘贴 Telegram 链接 → 点击「解析」
 2. 选择画质（视频）或文件
-3. 点击「开始下载」→ 实时查看进度
+3. 点击「开始下载」→ 实时查看进度（含 TTY 终端输出）
 4. 下载完成 → 「保存到本地」
 ```
 
@@ -118,6 +118,7 @@ TDL_PATH="D:\tools\tdl.exe" npm start
 | 后端 | Node.js + Express.js |
 | 前端 | 原生 HTML5 / CSS3 / JavaScript (ES6+) |
 | 实时通信 | SSE (Server-Sent Events) |
+| 终端模拟 | TTY 内嵌输出（ANSI 码处理 + 关键词高亮） |
 | Telegram 接口 | [tdl](https://github.com/tyler1234/tdl) CLI |
 | 样式风格 | CSS Glassmorphism (玻璃拟态) |
 | 二维码生成 | [qrcode.js](https://github.com/soldair/node-qrcode) |
@@ -126,12 +127,12 @@ TDL_PATH="D:\tools\tdl.exe" npm start
 
 ```
 tg-dl/
-├── server.js              # Express 后端服务（API 路由 + 业务逻辑）
+├── server.js              # Express 后端服务（API 路由 + 业务逻辑 + tdl 进程管理）
 ├── package.json           # 项目配置与依赖声明
 ├── public/
 │   ├── index.html         # 主页面（SPA 单页应用结构）
 │   ├── style.css          # 样式文件（深色玻璃拟态主题）
-│   └── app.js             # 前端交互逻辑
+│   └── app.js             # 前端交互逻辑（SSE 进度 / TTY 输出 / UI 控制）
 ├── data/
 │   └── config.json        # 运行时配置（代理设置 / 登录状态等）
 ├── downloads/             # 下载文件存储目录（自动创建）
@@ -176,6 +177,3 @@ MIT License - 仅供学习研究使用
 <p align="center">
   <sub>Made with ❤️ by <a href="https://github.com/RDevils7">RDevils7</a></sub>
 </p>
-=======
-# TgDl
->>>>>>> a9c730f7ceee28074c03ea87ffc15b7173d80e48

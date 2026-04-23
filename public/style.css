@@ -597,7 +597,221 @@ body {
     color: var(--text-primary);
 }
 
+/* ==================== 下载选项增强样式 ==================== */
+
+/* 两列布局 */
+.option-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.option-sub {
+    display: flex;
+    flex-direction: column;
+}
+
+.option-sub label {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+/* 数字/文本小输入框 */
+.styled-input-sm {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    outline: none;
+    transition: var(--transition);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.styled-input-sm:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.styled-input-sm::placeholder {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* 普通输入框 */
+.styled-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    outline: none;
+    transition: var(--transition);
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.styled-input:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.styled-input::placeholder {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.form-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* 开关选项网格 */
+.toggle-options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+}
+
+.toggle-option {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 6px 0;
+    font-size: 0.83rem;
+    color: var(--text-primary) !important;
+    font-weight: normal !important;
+    transition: opacity 0.2s;
+}
+
+.toggle-option:hover {
+    opacity: 0.8;
+}
+
+.toggle-option input[type="checkbox"] {
+    display: none;
+}
+
+.toggle-switch-sm {
+    position: relative;
+    width: 34px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 9px;
+    flex-shrink: 0;
+    transition: background 0.25s ease;
+}
+
+.toggle-switch-sm::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.25s ease;
+}
+
+.toggle-option input:checked + .toggle-switch-sm {
+    background: var(--accent-green);
+}
+
+.toggle-option input:checked + .toggle-switch-sm::after {
+    transform: translateX(16px);
+}
+
+/* 高级选项折叠面板 */
+.advanced-options {
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.advanced-details summary,
+.advanced-options summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 0.84rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    user-select: none;
+    transition: color 0.2s;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.advanced-options summary::-webkit-details-marker {
+    display: none;
+}
+
+.advanced-options summary::before {
+    content: '▶';
+    font-size: 0.65rem;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.advanced-options[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.advanced-options summary:hover {
+    color: var(--text-primary);
+}
+
+.advanced-body {
+    padding: 0 14px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: 0;
+}
+
 /* 文件列表 */
+
+/* ==================== 设置侧栏 - 下载默认设置样式 ==================== */
+
+.settings-section-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+
+.set-dl-row {
+    margin-bottom: 10px;
+}
+
+.set-dl-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.set-dl-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    padding: 6px 0;
+}
+
+/* 下载面板精简后的行内布局 */
+.dl-inline-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+}
 .file-list {
     max-height: 200px;
     overflow-y: auto;
@@ -758,6 +972,96 @@ body {
     font-family: 'SF Mono', 'Cascadia Code', monospace;
 }
 
+/* ==================== TTY 终端输出 ==================== */
+.tty-container {
+    background: #0d1117;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.tty-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tty-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.tty-dot-red { background: #ff5f56; }
+.tty-dot-yellow { background: #ffbd2e; }
+.tty-dot-green { background: #27c93f; }
+
+.tty-title {
+    margin-left: 8px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+}
+
+.tty-output {
+    margin: 0;
+    padding: 12px 14px;
+    min-height: 180px;
+    max-height: 380px;
+    overflow-y: auto;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: #c9d1d9;
+    white-space: pre-wrap;
+    word-break: break-all;
+    tab-size: 4;
+
+    /* 自定义滚动条 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+
+.tty-output::-webkit-scrollbar { width: 6px; }
+.tty-output::-webkit-scrollbar-track { background: transparent; }
+.tty-output::-webkit-scrollbar-thumb { 
+    background: rgba(255,255,255,0.12); 
+    border-radius: 3px; 
+}
+
+/* TTY 输出中的关键词高亮 */
+.tty-output .tty-done { color: #27c93f; font-weight: 600; }
+.tty-output .tty-error { color: #ff5f56; }
+.tty-output .tty-warn { color: #ffbd2e; }
+.tty-output .tty-pct { color: #58a6ff; font-weight: 600; }
+.tty-output .tty-speed { color: #a5d6ff; }
+.tty-output .tty-file { color: #d2a8ff; }
+
+/* 完成后的统计摘要 */
+.tty-summary {
+    padding: 12px 14px;
+    background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(34,211,153,0.04));
+    border-top: 1px solid rgba(16,185,129,0.15);
+}
+
+.tty-summary .summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 0.82rem;
+}
+
+.tty-summary .summary-label { color: var(--text-muted); }
+.tty-summary .summary-value { 
+    color: var(--accent-green); 
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    font-weight: 600;
+}
+
 /* 状态表格 */
 .status-info {
     background: rgba(0, 0, 0, 0.2);
@@ -889,6 +1193,36 @@ body {
 .history-status-badge.failed {
     background: rgba(239, 68, 68, 0.15);
     color: var(--accent-red);
+}
+
+/* 历史记录头部 + 清空按钮 */
+.history-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px;
+    margin-bottom: 6px;
+}
+
+.history-count {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.btn-clear-history {
+    background: none;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--accent-red);
+    padding: 3px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.2s ease;
+}
+
+.btn-clear-history:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.5);
 }
 
 /* ==================== 页脚 ==================== */
@@ -1627,6 +1961,19 @@ body {
 
 .conn-test-error {
     background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+/* 设置保存提示复用 conn-test 样式 */
+.conn-test-ok {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 0.83rem;
+}
     border: 1px solid rgba(239, 68, 68, 0.2);
     color: #fca5a5;
 }
