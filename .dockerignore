@@ -1,6 +1,5 @@
 # 依赖
 node_modules/
-package-lock.json
 
 # 构建产物 / 临时文件
 downloads/
@@ -16,9 +15,14 @@ data/*.json
 .git/
 .gitignore
 
-# 杂项
+# 杂项（工作目录中的异常文件）
 300
 console.error(e))
 console.log(a.name
 {f.close()}
+
+# 打包文件（不需要进镜像）
+tg-dl-docker.tar.gz
+
+# README（镜像不需要）
 README.md
