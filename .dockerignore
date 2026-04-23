@@ -1,0 +1,24 @@
+# 依赖
+node_modules/
+package-lock.json
+
+# 构建产物 / 临时文件
+downloads/
+data/*.json
+!data/.gitkeep
+
+# 开发文件
+.workbuddy/
+*.log
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# 杂项
+300
+console.error(e))
+console.log(a.name
+{f.close()}
+README.md

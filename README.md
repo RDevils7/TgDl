@@ -49,6 +49,48 @@ npm start
 # http://localhost:3210
 ```
 
+### 🐳 Docker 部署（推荐）
+
+一键启动，自动安装 tdl 并配置数据持久化：
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/RDevils7/TgDl.git
+cd TgDl
+
+# 2. 构建镜像并启动（后台运行）
+docker compose up -d --build
+
+# 3. 浏览器访问
+# http://localhost:3210
+```
+
+**Docker 持久化卷说明：**
+
+| 卷名 | 容器路径 | 用途 |
+|------|----------|------|
+| `tg-dl-tdl-data` | `/root/.tdl` | tdl 登录 session、用户数据 |
+| `tg-dl-downloads` | `/app/downloads` | 下载的文件 |
+| `tg-dl-config` | `/app/data` | 应用配置（代理、登录状态等） |
+
+> 容器删除/重建后，以上三个卷的数据**不会丢失**。
+
+**自定义配置：**
+
+```bash
+# 修改端口号
+TG_DL_PORT=8080 docker compose up -d --build
+
+# 使用宿主机目录挂载（替代命名卷）
+docker run -d \
+  -p 3210:3210 \
+  -v /your/path/tdl-data:/root/.tdl \
+  -v /your/path/downloads:/app/downloads \
+  -v /your/path/config:/app/data \
+  --name tg-dl \
+  tg-dl
+```
+
 ### 自定义配置
 
 ```bash

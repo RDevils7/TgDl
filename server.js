@@ -18,14 +18,14 @@ const PORT = process.env.PORT || 3210;
 
 // ==================== 配置 ====================
 
-// tdl 路径（自动检测）
-const TDL_PATH = process.env.TDL_PATH || 'C:\\tdl\\tdl.exe';
+// tdl 路径（Docker 环境下通过 TDL_PATH 环境变量指定）
+const TDL_PATH = process.env.TDL_PATH || (process.platform === 'win32' ? 'C:\\tdl\\tdl.exe' : '/usr/local/bin/tdl');
 
-// 下载目录
-const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
+// 下载目录（支持环境变量覆盖）
+const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR || path.join(__dirname, 'downloads');
 
-// 配置持久化文件
-const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
+// 配置持久化文件（支持环境变量覆盖）
+const CONFIG_FILE = process.env.CONFIG_FILE || path.join(__dirname, 'data', 'config.json');
 
 // 中间件
 app.use(express.json({ limit: '50mb' }));
