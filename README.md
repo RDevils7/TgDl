@@ -62,10 +62,43 @@ cd TgDl
 docker compose up -d --build
 
 # 3. 浏览器访问
-# http://localhost:3210
+# http://<NAS的IP>:3210
 ```
 
-**Docker 持久化卷说明：**
+#### 🏠 NAS 专用部署说明
+
+支持 **群晖 DSM / 威联通 QNAP / UNRAID / OpenMediaVault** 等，兼容 `linux/amd64` 和 `linux/arm64` 架构。
+
+**群晖 (Synology) Docker：**
+```bash
+# SSH 登入 NAS 后执行
+cd /volume1/docker
+git clone https://github.com/RDevils7/TgDl.git tg-dl
+cd tg-dl
+
+# 启动服务
+docker compose up -d --build
+
+# 访问 http://<NAS IP>:3210
+```
+
+**威联通 (QNAP) Container Station：**
+```bash
+# 通过 SSH 或终端机执行
+cd /share/Container
+git clone https://github.com/RDevils7/TgDl.git tg-dl
+cd tg-dl
+docker compose up -d --build
+```
+
+**UNRAID：**
+- 在 Docker 管理页面 → Add Container → 选择仓库路径或粘贴 docker-compose.yml 内容
+- 映射端口 `3210:3210`
+
+> ⚠️ **NAS 必须配置代理！** Telegram 在国内无法直连。
+> 在 Web UI 的设置面板中填写代理信息，或在 `docker-compose.yml` 中取消注释代理环境变量。
+
+#### 数据持久化卷
 
 | 卷名 | 容器路径 | 用途 |
 |------|----------|------|
@@ -73,7 +106,14 @@ docker compose up -d --build
 | `tg-dl-downloads` | `/app/downloads` | 下载的文件 |
 | `tg-dl-config` | `/app/data` | 应用配置（代理、登录状态等） |
 
-> 容器删除/重建后，以上三个卷的数据**不会丢失**。
+> 容器删除/重建后，以上三个卷的数据**不会丢失**。  
+> 如需在 NAS 文件管理器中直接查看下载文件，改用绑定挂载：
+> ```yaml
+> volumes:
+>   - /volume1/docker/tg-dl/downloads:/app/downloads   # 改为你的 NAS 路径
+>   - /volume1/docker/tg-dl/config:/app/data
+>   - /volume1/docker/tg-dl/tdl-data:/root/.tdl
+> ```
 
 **自定义配置：**
 
@@ -81,14 +121,7 @@ docker compose up -d --build
 # 修改端口号
 TG_DL_PORT=8080 docker compose up -d --build
 
-# 使用宿主机目录挂载（替代命名卷）
-docker run -d \
-  -p 3210:3210 \
-  -v /your/path/tdl-data:/root/.tdl \
-  -v /your/path/downloads:/app/downloads \
-  -v /your/path/config:/app/data \
-  --name tg-dl \
-  tg-dl
+# 指定 tdl 版本（编辑 docker-compose.yml 的 build.args）
 ```
 
 ### 自定义配置
@@ -169,6 +202,9 @@ TDL_PATH="D:\tools\tdl.exe" npm start
 
 ```
 tg-dl/
+├── Dockerfile              # Docker 镜像构建（多阶段构建，自动安装 tdl）
+├── docker-compose.yml      # Docker Compose 编排（含数据卷持久化）
+├── .dockerignore           # Docker 构建排除文件
 ├── server.js              # Express 后端服务（API 路由 + 业务逻辑 + tdl 进程管理）
 ├── package.json           # 项目配置与依赖声明
 ├── public/
@@ -177,7 +213,7 @@ tg-dl/
 │   └── app.js             # 前端交互逻辑（SSE 进度 / TTY 输出 / UI 控制）
 ├── data/
 │   └── config.json        # 运行时配置（代理设置 / 登录状态等）
-├── downloads/             # 下载文件存储目录（自动创建）
+├── downloads/             # 下载文件存储目录（Docker 中挂载为持久化卷）
 └── README.md              # 本文件
 ```
 
