@@ -1,0 +1,1 @@
+{"name":"tg-dl","version":"1.0.0","description":"Telegram 文件/视频免登录下载工具","main":"server.js","scripts":{"start":"node server.js"},"dependencies":{"cheerio":"^1.0.0-rc.12","express":"^4.18.2","https-proxy-agent":"^9.0.0","node-fetch":"^2.7.0","node-pty":"^1.1.0","socks-proxy-agent":"^10.0.0","uuid":"^9.0.0"}}

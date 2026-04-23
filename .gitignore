@@ -1,0 +1,9 @@
+node_modules/
+downloads/
+data/config.json
+*.log
+_check*.js
+_fix*.js
+_test-*.js
+test-*.js
+.DS_Store
