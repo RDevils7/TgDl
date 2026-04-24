@@ -322,9 +322,19 @@ app.post('/api/login/qr', async (req, res) => {
                 console.log('[login-qr] PTY exited: ' + exitCode + ', loginSuccess=' + loginSuccess + ', qrLoginSuccess=' + qrLoginSuccess);
                 const finalSuccess = (exitCode === 0 || loginSuccess || qrLoginSuccess);
                 if (finalSuccess && !appConfig.loginStatus?.loggedIn) {
-                    appConfig.loginStatus = { loggedIn: true, checkedAt: new Date().toISOString(), info: '已通过扫码登录' };
+                    // 从 TTY 输出中提取账号信息
+                    const cleanOutput = stripAnsi(qrOutputBuffer || '');
+                    const accountInfo = parseAccountInfo(cleanOutput) || {};
+                    appConfig.loginStatus = { 
+                        loggedIn: true, 
+                        checkedAt: new Date().toISOString(), 
+                        account: accountInfo,
+                        info: Object.keys(accountInfo).length > 0 
+                            ? (accountInfo.displayName || accountInfo.username || accountInfo.phone || '已通过扫码登录')
+                            : '已通过扫码登录'
+                    };
                     saveConfig(appConfig);
-                    console.log('[login-qr] Config updated: loggedIn=true');
+                    console.log('[login-qr] Config updated: loggedIn=true, account:', JSON.stringify(accountInfo));
                 }
                 loginProcess = null; loginPty = null; loginState = null;
             });
@@ -386,7 +396,8 @@ app.get('/api/login/qr/stream', (req, res) => {
                     const successPatterns = /login.*success|authorized|已登录|logged.*in|Login successful/i;
                     if (successPatterns.test(finalOutput)) {
                         qrLoginSuccess = true;
-                        appConfig.loginStatus = { loggedIn: true, checkedAt: new Date().toISOString(), info: '已通过扫码登录' };
+                        const accountInfo = parseAccountInfo(finalOutput) || {};
+                        appConfig.loginStatus = { loggedIn: true, checkedAt: new Date().toISOString(), account: accountInfo, info: accountInfo.displayName || accountInfo.username || '已通过扫码登录' };
                         saveConfig(appConfig);
                         console.log('[login-qr] Post-exit check found success pattern, updated config');
                     }
@@ -525,7 +536,13 @@ app.post('/api/login/code/start', async (req, res) => {
         loginProcess = null;
 
         if (code === 0 || loginSuccess) {
-            appConfig.loginStatus = { loggedIn: true, checkedAt: new Date().toISOString(), info: `已通过验证码登录 (${phone})` };
+            const phone = loginState?.phone || '';
+            appConfig.loginStatus = { 
+                loggedIn: true, 
+                checkedAt: new Date().toISOString(), 
+                account: { phone: phone },
+                info: `已通过验证码登录 (${phone})`
+            };
             saveConfig(appConfig);
         }
         loginState = null;
@@ -596,46 +613,97 @@ app.post('/api/login/code/submit', async (req, res) => {
 });
 
 /**
+ * 通过 tdl chat ls 检测 session 是否有效，并提取可用信息
+ */
+async function checkTdlSession() {
+    return new Promise((resolve) => {
+        const proxyAddr = getProxyArg();
+        const args = ['chat', 'ls', '--limit', '1'];
+        if (proxyAddr) args.push('--proxy', proxyAddr);
+        const child = spawn(TDL_PATH, args, {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            windowsHide: true,
+            timeout: 20000
+        });
+        let output = '';
+        let errOutput = '';
+        child.stdout.on('data', function(d) { output += d.toString(); });
+        child.stderr.on('data', function(d) { errOutput += d.toString(); });
+        child.on('close', function(code) {
+            resolve({ code: code, output: output.trim(), error: errOutput.trim() });
+        });
+        child.on('error', function(e) { resolve({ code: -1, output: '', error: e.message }); });
+        setTimeout(function() { try { child.kill(); } catch(_) {} resolve({ code: -2, output: '', error: 'timeout' }); }, 20000);
+    });
+}
 
 /**
- * GET /api/login/status - 获取登录状态（增强版：实时检测 tdl session）
+ * 解析 tdl 输出，尝试提取用户账号信息
+ * tdl login 成功后的输出可能包含: 手机号、用户名、姓名等
+ */
+function parseAccountInfo(rawOutput) {
+    if (!rawOutput) return null;
+    
+    // 尝试匹配手机号格式 +86xxx 或其他国际号码
+    const phoneMatch = rawOutput.match(/(\+?\d{10,15})/);
+    // 尝试匹配 @username
+    const usernameMatch = rawOutput.match(/@([a-zA-Z][a-zA-Z0-9_]{4,31})/);
+    // 尝试匹配 "Logged in as" / "Login as" 等模式
+    const loggedAsMatch = rawOutput.match(/(?:logged\s*(?:in)?\s*as?|login\s*as|authorized\s*as)[:\s]+(.+?)(?:\n|$|\s{2,})/i);
+    // 尝试匹配 "Hello, xxx" / "欢迎, xxx"
+    const helloMatch = rawOutput.match(/(?:Hello[,，]|欢迎[,,]\s*|Hi[,，]\s*)([^\n\r]+)/i);
+    
+    const info = {};
+    if (phoneMatch) info.phone = phoneMatch[1];
+    if (usernameMatch) info.username = usernameMatch[1];
+    if (loggedAsMatch) info.displayName = loggedAsMatch[1].trim();
+    if (helloMatch && !info.displayName) info.displayName = helloMatch[1].trim();
+    
+    return Object.keys(info).length > 0 ? info : null;
+}
+
+/**
+ * GET /api/login/status - 获取登录状态（实时检测 tdl session）
  */
 app.get('/api/login/status', async (req, res) => {
     let isProcessing = loginProcess !== null;
 
+    // 如果当前标记为未登录且没有进行中的登录进程，主动检测 session
     if (!appConfig.loginStatus?.loggedIn && !isProcessing) {
         try {
-            const whoamiResult = await new Promise((resolve) => {
-                const proxyAddr = getProxyArg();
-                const args = ['whoami'];
-                if (proxyAddr) args.push('--proxy', proxyAddr);
-                const child = spawn(TDL_PATH, args, {
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                    windowsHide: true,
-                    timeout: 15000
-                });
-                let output = '';
-                child.stdout.on('data', function(d) { output += d.toString(); });
-                child.stderr.on('data', function(d) { output += d.toString(); });
-                child.on('close', function(code) { resolve({ code: code, output: output }); });
-                child.on('error', function(e) { resolve({ code: -1, output: e.message }); });
-                setTimeout(function() { child.kill(); resolve({ code: -2, output: 'timeout' }); }, 15000);
-            });
-
-            console.log('[login-status] whoami result:', JSON.stringify(whoamiResult).slice(0, 300));
+            const result = await checkTdlSession();
+            console.log('[login-status] session check result:', JSON.stringify(result).slice(0, 300));
             
-            // 如果 whoami 成功返回用户信息，说明 session 有效
-            if (whoamiResult.code === 0 && whoamiResult.output.trim() && !/error|not logged|unauthorized|AUTH/i.test(whoamiResult.output)) {
+            if (result.code === 0 && result.output && !/error|not logged|unauthorized|AUTH_TOKEN_EXPIRED/i.test(result.error || result.output)) {
+                // session 有效
+                const accountInfo = parseAccountInfo(result.output) || {};
                 appConfig.loginStatus = { 
                     loggedIn: true, 
-                    checkedAt: new Date().toISOString(), 
-                    info: '已通过扫码登录 (' + whoamiResult.output.trim().slice(0, 50) + ')' 
+                    checkedAt: new Date().toISOString(),
+                    account: accountInfo,
+                    info: accountInfo.displayName || accountInfo.username || accountInfo.phone || 'Session 有效'
                 };
                 saveConfig(appConfig);
-                console.log('[login-status] Found valid session via whoami!');
+                console.log('[login-status] Found valid session!');
             }
         } catch(e) {
-            console.warn('[login-status] whoami check failed:', e.message);
+            console.warn('[login-status] session check failed:', e.message);
+        }
+    } else if (appConfig.loginStatus?.loggedIn && !isProcessing) {
+        // 已登录状态下，定期刷新账号信息（如果还没有详细信息）
+        if (!appConfig.loginStatus.account || Object.keys(appConfig.loginStatus.account).length === 0) {
+            try {
+                const result = await checkTdlSession();
+                if (result.code === 0 && result.output) {
+                    const accountInfo = parseAccountInfo(result.output) || {};
+                    if (Object.keys(accountInfo).length > 0) {
+                        appConfig.loginStatus.account = accountInfo;
+                        appConfig.loginStatus.info = accountInfo.displayName || accountInfo.username || accountInfo.phone || appConfig.loginStatus.info;
+                        saveConfig(appConfig);
+                        console.log('[login-status] Account info updated:', JSON.stringify(accountInfo));
+                    }
+                }
+            } catch(e) { /* ignore */ }
         }
     }
 
@@ -643,6 +711,35 @@ app.get('/api/login/status', async (req, res) => {
         ...appConfig.loginStatus,
         processing: isProcessing
     });
+});
+
+/**
+ * GET /api/login/me - 获取详细账号信息（需要已登录）
+ */
+app.get('/api/login/me', async (req, res) => {
+    try {
+        const result = await checkTdlSession();
+        
+        if (result.code !== 0 || /error|not logged|unauthorized|AUTH_TOKEN_EXPIRED/i.test(result.error || result.output)) {
+            return res.json({ loggedIn: false, error: '未登录或 session 已失效' });
+        }
+        
+        // 从 tdl chat ls 的完整输出中获取更多上下文
+        // 尝试获取更多信息
+        const accountInfo = parseAccountInfo(result.output) || {};
+        
+        res.json({
+            loggedIn: true,
+            checkedAt: new Date().toISOString(),
+            account: accountInfo,
+            info: accountInfo.displayName || accountInfo.username || accountInfo.phone || '已登录',
+            // 额外元数据
+            sessionValid: true,
+            chatListSample: result.output.split('\n').slice(0, 3) // 前3行聊天列表作为参考
+        });
+    } catch(e) {
+        res.json({ loggedIn: false, error: e.message });
+    }
 });
 
 /**

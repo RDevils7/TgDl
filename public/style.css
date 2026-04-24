@@ -72,6 +72,16 @@ body {
     text-align: center;
     padding: 32px 0 28px;
     animation: fadeInDown 0.6s ease-out;
+    /* 移动端改为 flex 布局，logo 和 actions 在一行 */
+    display: block;
+}
+
+/* 头部顶行（移动端让 logo 和按钮在同一行） */
+.header-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
 }
 
 .logo-section {
@@ -1235,6 +1245,27 @@ body {
     letter-spacing: 0.5px;
 }
 
+.app-footer p { margin-bottom: 6px; }
+.app-footer p:last-child { margin-bottom: 0; }
+
+.footer-credits {
+    opacity: 0.6;
+    line-height: 1.55;
+}
+
+.footer-credits a {
+    color: var(--accent-cyan);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.footer-credits a:hover,
+.footer-credits a:active {
+    color: #67e8f9;
+    border-bottom-color: rgba(103, 232, 249, 0.4);
+}
+
 /* ==================== 动画 ==================== */
 @keyframes fadeInUp {
     from {
@@ -1746,40 +1777,431 @@ body {
     60% { transform: translateX(-4px); }
     80% { transform: translateX(4px); }
 }
-    border-top: 1px solid rgba(255,255,255,0.05);
-}
 
-@media (max-width: 600px) {
-    .app-container {
-        padding: 14px;
+/* ==================== 移动端响应式适配 ==================== */
+
+/* ---- 小手机 (max-width: 480px) ---- */
+@media (max-width: 480px) {
+    :root {
+        --radius-md: 12px;
+        --radius-lg: 14px;
     }
 
+    html { font-size: 15px; }
+
+    body {
+        /* 移动端用更干净的背景 */
+        background-image:
+            radial-gradient(ellipse at 30% 40%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+            radial-gradient(ellipse at 70% 10%, rgba(6, 182, 212, 0.04) 0%, transparent 50%);
+        -webkit-tap-highlight-color: transparent; /* 去除触摸高亮 */
+    }
+
+    /* 容器全宽，紧凑边距 */
+    .app-container {
+        max-width: 100%;
+        padding: 12px;
+        padding-bottom: env(safe-area-inset-bottom, 24px);
+    }
+
+    /* ====== 头部适配 ====== */
+    .app-header {
+        padding: 20px 0 16px;
+        /* 让头部可以和 header-actions 对齐 */
+        position: relative;
+        display: block; /* 保持块级，内部用 flex 行 */
+    }
+
+    .header-top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .logo-section { justify-content: flex-start; }
+
+    .logo-section {
+        gap: 8px;
+    }
+
+    .logo-icon {
+        font-size: 28px;
+    }
+
+    .app-header h1 {
+        font-size: 1.5rem;
+    }
+
+    .version-badge {
+        font-size: 0.58rem;
+        padding: 2px 6px;
+    }
+
+    .subtitle {
+        font-size: 0.82rem;
+        margin-bottom: 4px;
+    }
+
+    /* 头部操作按钮区 - 紧凑化 */
+    .header-actions {
+        top: 20px;
+        right: 4px;
+        gap: 6px;
+    }
+
+    .login-status-btn {
+        padding: 4px 10px;
+        font-size: 0.72rem;
+    }
+
+    #loginStatusText {
+        max-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .settings-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+
+    .settings-btn svg { width: 17px; height: 17px; }
+
+    /* ====== 卡片通用 ====== */
+    .card {
+        padding: 16px;
+        margin-bottom: 14px;
+        border-radius: var(--radius-md);
+    }
+
+    .card h2 {
+        font-size: 0.95rem;
+        margin-bottom: 14px;
+    }
+
+    /* ====== 输入面板 ====== */
     .input-group {
         flex-direction: column;
+        gap: 8px;
+    }
+
+    .input-group input {
+        padding: 13px 14px;
+        font-size: 0.9rem;
+        border-radius: 10px;
+        /* 防止 iOS 缩放 */
+        font-size: 16px !important;
     }
 
     .btn-primary {
         width: 100%;
+        padding: 14px;
+        font-size: 0.92rem;
+        border-radius: 10px;
+        min-height: 48px; /* 触控最小高度 */
     }
 
-    .options-grid {
+    /* 输入提示文字缩小 */
+    .input-hints {
+        font-size: 0.72rem;
+        gap: 4px;
+        margin-top: 2px;
+    }
+
+    .input-hints code {
+        font-size: 0.68rem;
+        padding: 1px 6px;
+    }
+
+    /* 错误提示 */
+    .error-box {
+        font-size: 0.84rem;
+        padding: 12px 14px;
+        margin-top: 12px;
+    }
+
+    /* ====== 解析结果 ====== */
+    .link-info-card { border-radius: var(--radius-sm); }
+
+    .info-row { padding: 7px 0; }
+    .info-label { font-size: 0.78rem; }
+    .info-value { font-size: 0.82rem; max-width: 58%; }
+
+    .tdl-ready-card { padding: 18px 14px; }
+    .tdl-ready-icon { font-size: 26px; margin-bottom: 8px; }
+    .tdl-ready-title { font-size: 0.92rem; }
+    .tdl-ready-desc {
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.76rem;
+    }
+
+    .message-preview {
+        font-size: 0.82rem;
+        padding: 8px 12px;
+        max-height: 60px;
+    }
+
+    .result-item {
+        padding: 12px;
+        border-radius: 10px;
+    }
+
+    .file-type-icon { font-size: 24px; margin-right: 10px; }
+    .file-name-text { font-size: 0.88rem; }
+    .file-meta-text { font-size: 0.75rem; margin-top: 3px; }
+    .file-meta-text .tag { font-size: 0.7rem; padding: 1px 6px; }
+
+    /* ====== 选项面板 ====== */
+    .options-grid { grid-template-columns: 1fr; gap: 12px; }
+
+    .dl-inline-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .option-sub .toggle-option { font-size: 0.8rem; }
+
+    .styled-select {
+        padding: 11px 12px;
+        font-size: 0.85rem;
+        min-height: 44px;
+        /* 防止 iOS Safari select 缩放 */
+        appearance: none !important;
+        -webkit-appearance: none !important;
+    }
+
+    .btn-download {
+        padding: 15px;
+        font-size: 0.98rem;
+        min-height: 50px;
+    }
+
+    /* 设置侧栏内的两列布局 */
+    .set-dl-row-2col,
+    .proxy-row-2col {
         grid-template-columns: 1fr;
+        gap: 10px;
     }
 
+    /* ====== 进度面板 ====== */
+    .file-info { padding: 12px 14px; border-radius: 10px; }
+    .file-name { font-size: 0.88rem; }
+    .file-meta { font-size: 0.78rem; flex-wrap: wrap; gap: 4px; }
+    .speed-badge { font-size: 0.72rem; padding: 2px 8px; }
+
+    /* TTY 终端 - 手机端更大更好读 */
+    .tty-container { border-radius: 10px; }
+    .tty-output {
+        min-height: 140px;
+        max-height: 280px;
+        font-size: 0.74rem;
+        line-height: 1.5;
+        padding: 10px 12px;
+    }
+
+    /* 操作按钮 */
     .action-buttons {
         flex-direction: column;
+        gap: 10px;
+        margin-top: 14px;
     }
 
     .action-buttons button {
         max-width: none;
+        padding: 13px;
+        font-size: 0.88rem;
+        min-height: 46px;
+        border-radius: 10px;
     }
 
-    .app-header h1 {
-        font-size: 1.6rem;
+    /* ====== 历史记录 ====== */
+    .history-list { max-height: 240px; }
+
+    .empty-icon { font-size: 34px; margin-bottom: 8px; }
+
+    .history-item {
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin-bottom: 6px;
     }
 
-    .card {
-        padding: 18px;
+    .history-item .history-icon { font-size: 20px; }
+    .history-item-name { font-size: 0.84rem; }
+    .history-item-time { font-size: 0.72rem; }
+    .history-status-badge { font-size: 0.68rem; padding: 2px 7px; }
+
+    .btn-clear-history { font-size: 0.72rem; padding: 3px 10px; }
+
+    /* ====== 页脚 ====== */
+    .app-footer { padding: 18px 0 10px; font-size: 0.72rem; }
+
+    .footer-credits {
+        font-size: 0.68rem;
+        line-height: 1.5;
+        opacity: 0.55;
+    }
+
+    /* ====== 设置侧栏 - 全屏覆盖 ====== */
+    .settings-sidebar {
+        width: 100vw;
+        max-width: 100vw;
+        right: -100vw;
+        border-left: none;
+        border-radius: 0;
+        padding: 20px 16px;
+        padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    }
+
+    .settings-sidebar.open {
+        box-shadow: -5px 0 30px rgba(0,0,0,0.5);
+    }
+
+    .settings-section h3 { font-size: 0.86rem; }
+    .set-dl-row { margin-bottom: 8px; }
+    .set-dl-toggles { gap: 2px 12px; }
+
+    .proxy-actions { flex-direction: column; gap: 10px; }
+    .btn-test, .btn-save-proxy { width: 100%; }
+
+    /* ====== 登录弹窗 - 全屏居中 ====== */
+    .login-modal {
+        width: 94vw;
+        max-width: 380px;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 24px 20px;
+        border-radius: 18px;
+    }
+
+    .modal-header h3 { font-size: 1rem; }
+
+    .login-tabs {
+        font-size: 0.84rem;
+    }
+
+    .login-tab { padding: 10px 12px; font-size: 0.84rem; }
+
+    .login-status-area {
+        padding: 18px 14px;
+        margin-bottom: 14px;
+    }
+
+    .login-status-icon { font-size: 30px; }
+
+    #loginModalMsg { font-size: 0.84rem; }
+
+    .form-input-code {
+        /* 防止 iOS 自动缩放 */
+        font-size: 16px !important;
+        padding: 13px 14px;
+        min-height: 48px;
+    }
+
+    .login-action-btn {
+        padding: 13px;
+        font-size: 0.9rem;
+        border-radius: 10px;
+        min-height: 48px;
+    }
+
+    .qr-hint { font-size: 0.82rem; }
+    .qr-container canvas { max-width: 180px; max-height: 180px; }
+
+    /* QR 终端模式 */
+    .qr-terminal-live {
+        min-width: auto !important;
+        max-height: 240px !important;
+        font-size: 8px !important;
+        line-height: 1.15 !important;
+        padding: 10px !important;
+    }
+
+    .login-hint { font-size: 0.7rem; padding-top: 10px; }
+
+    /* 账号信息卡片移动端 */
+    .account-info-card {
+        padding: 10px !important;
+        border-radius: 8px !important;
+    }
+}
+
+/* ---- 中等屏幕 (481px ~ 600px) ---- */
+@media (min-width: 481px) and (max-width: 600px) {
+    .app-container { padding: 16px; }
+
+    .app-header h1 { font-size: 1.65rem; }
+
+    .card { padding: 18px; }
+
+    .input-group { flex-direction: column; gap: 10px; }
+
+    .btn-primary { width: 100%; }
+
+    .options-grid { grid-template-columns: 1fr; }
+
+    .dl-inline-row { flex-direction: column; align-items: stretch; gap: 12px; }
+
+    .set-dl-row-2col,
+    .proxy-row-2col { grid-template-columns: 1fr; gap: 12px; }
+
+    .action-buttons { flex-direction: column; }
+    .action-buttons button { max-width: none; }
+
+    .settings-sidebar {
+        width: 340px;
+        padding: 22px 18px;
+    }
+
+    .tty-output { max-height: 320px; }
+}
+
+/* ---- 大屏手机/小平板 (601px~768px) ---- */
+@media (min-width: 601px) and (max-width: 768px) {
+    .app-container { padding: 18px; max-width: 96%; }
+
+    .dl-inline-row {
+        flex-wrap: wrap;
+    }
+
+    .dl-inline-row .option-sub:first-child { flex: 1; min-width: 200px; }
+
+    .settings-sidebar { width: 360px; }
+
+    .tty-output { max-height: 350px; }
+}
+
+/* ---- 横屏模式 ---- */
+@media (max-width: 900px) and (orientation: landscape) {
+    .app-header { padding: 14px 0 10px; }
+    .logo-icon { font-size: 24px; }
+    .app-header h1 { font-size: 1.3rem; }
+    .subtitle { display: none; } /* 横屏隐藏副标题省空间 */
+
+    .login-modal {
+        max-height: 98vh;
+        padding: 16px 20px;
+    }
+
+    .card { padding: 14px 16px; margin-bottom: 10px; }
+
+    .tty-output { max-height: 200px; min-height: 120px; }
+}
+
+/* ---- 安全区域适配 (iPhone X+) ---- */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .app-container {
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .settings-sidebar {
+        padding-bottom: calc(24px + env(safe-area-inset-bottom));
     }
 }
 
@@ -1973,9 +2395,6 @@ body {
     border-radius: var(--radius-sm);
     padding: 10px 14px;
     font-size: 0.83rem;
-}
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    color: #fca5a5;
 }
 
 .conn-test-warning {

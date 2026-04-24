@@ -1204,6 +1204,19 @@ async function checkLoginStatus() {
         const status = await res.json();
         state.loginStatus = status;
 
+        // 如果已登录，额外获取详细账号信息
+        if (status.loggedIn) {
+            try {
+                const meRes = await fetch('/api/login/me');
+                const meData = await meRes.json();
+                if (meData.loggedIn && meData.account) {
+                    // 合并详细的账号信息
+                    status.account = { ...(status.account || {}), ...meData.account };
+                    state.loginStatus = status;
+                }
+            } catch(e) { /* me 接口失败不影响主流程 */ }
+        }
+
         updateLoginUI(status);
         updateHeaderLoginStatus(status);
 
@@ -1222,11 +1235,41 @@ function updateHeaderLoginStatus(status) {
 
     if (status.loggedIn) {
         icon.className = 'status-dot online';
-        text.textContent = '已登录';
+        // 优先显示用户名 > 显示名 > 手机号(脱敏) > 已登录
+        const account = status.account || {};
+        if (account.username) {
+            text.textContent = '@' + account.username;
+        } else if (account.displayName) {
+            text.textContent = account.displayName;
+        } else if (account.phone) {
+            text.textContent = maskPhone(account.phone);
+        } else {
+            text.textContent = status.info || '已登录';
+        }
+        // 添加 title 显示完整信息
+        const btn = $('#loginStatusBtn');
+        if (btn) {
+            let titleParts = ['已登录'];
+            if (account.displayName) titleParts.push('名称: ' + account.displayName);
+            if (account.username) titleParts.push('@' + account.username);
+            if (account.phone) titleParts.push('手机: ' + account.phone);
+            if (status.checkedAt) titleParts.push('检测于: ' + new Date(status.checkedAt).toLocaleString('zh-CN'));
+            btn.title = titleParts.join('\n');
+        }
     } else {
         icon.className = 'status-dot offline';
         text.textContent = '未登录';
+        const btn = $('#loginStatusBtn');
+        if (btn) btn.title = '点击登录 Telegram 账号';
     }
+}
+
+/**
+ * 手机号脱敏显示：+8613800138000 → +861****8000
+ */
+function maskPhone(phone) {
+    if (!phone || phone.length < 7) return phone || '';
+    return phone.slice(0, -4) + '****' + phone.slice(-4);
 }
 
 /**
@@ -1247,7 +1290,41 @@ function updateLoginUI(status) {
 
     if (status.loggedIn) {
         iconEl.textContent = '✅';
-        msgEl.innerHTML = '<span style="color:var(--accent-green);font-weight:600">已登录</span><br><span style="font-size:0.82rem;color:var(--text-muted)">' + (status.info || 'Telegram 账号已认证') + '</span>';
+        
+        // 构建详细的账号信息卡片
+        const account = status.account || {};
+        let infoHtml = '<span style="color:var(--accent-green);font-weight:600;font-size:1rem">✅ 已登录</span>';
+        
+        // 账号详情区域
+        const hasDetails = account.displayName || account.username || account.phone;
+        if (hasDetails) {
+            infoHtml += '<div class="account-info-card" style="margin-top:10px;padding:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;text-align:left">';
+            
+            if (account.displayName) {
+                infoHtml += `<div class="account-row" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="color:var(--text-muted)">名称</span><span style="color:var(--text-primary);font-weight:500">${escapeHtml(account.displayName)}</span></div>`;
+            }
+            if (account.username) {
+                infoHtml += `<div class="account-row" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="color:var(--text-muted)">用户名</span><span style="color:var(--accent-cyan);font-weight:500">@${escapeHtml(account.username)}</span></div>`;
+            }
+            if (account.phone) {
+                infoHtml += `<div class="account-row" style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-muted)">手机号</span><span style="color:var(--text-primary);font-weight:500">${escapeHtml(maskPhone(account.phone))}</span></div>`;
+            }
+            
+            infoHtml += '</div>'; // account-info-card
+        }
+        
+        // 登录时间
+        if (status.checkedAt) {
+            infoHtml += `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:8px">检测于 ${new Date(status.checkedAt).toLocaleString('zh-CN')}</div>`;
+        }
+        
+        // 如果没有详情，显示默认提示
+        if (!hasDetails && status.info) {
+            infoHtml += `<br><span style="font-size:0.82rem;color:var(--text-muted)">${escapeHtml(status.info)}</span>`;
+        }
+        
+        msgEl.innerHTML = infoHtml;
+        
         startCodeBtn.classList.add('hidden');
         startQrBtn.classList.add('hidden');
         $('#submitCodeBtn').classList.add('hidden');
@@ -1848,6 +1925,35 @@ function shakeElement(el) {
 }
 
 // ==================== 初始化 ====================
+
+// 移动端检测
+const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth <= 600;
+
+// 移动端：输入框聚焦时防止页面过度滚动（iOS Safari）
+if (isMobile) {
+    document.addEventListener('DOMContentLoaded', () => {
+        // 给所有输入框添加聚焦时的视觉反馈
+        const inputs = document.querySelectorAll('input, select');
+        inputs.forEach(el => {
+            el.addEventListener('focus', () => {
+                // 延迟滚动确保可见
+                setTimeout(() => {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+            });
+        });
+
+        // 阻止 iOS 双击缩放
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, { passive: false });
+    });
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     renderHistory();
