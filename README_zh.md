@@ -13,39 +13,80 @@
 - **下载设置** — 自定义画质、并发数、线程数、文件名模板等
 - **终端输出** — 实时展示 tdl 原始终端日志
 
-## 系统要求
-
-| 环境 | 要求 |
-|------|------|
-| 操作系统 | Windows / Linux / macOS |
-| Node.js | >= 18 |
-| tdl CLI | v0.20.2（已内置） |
-
 ## 快速开始
 
-### 1. 安装依赖
+### 方式一：直接运行
 
 ```bash
 git clone https://github.com/RDevils7/TgDl.git
 cd TgDl
 npm install
-```
-
-### 2. 配置 tdl
-
-Windows 用户需要将 `tdl.exe` 放到 `C:\tdl\tdl.exe`，或通过环境变量指定：
-
-```bash
-export TDL_PATH=/你的路径/tdl
-```
-
-### 3. 启动服务
-
-```bash
 npm start
 ```
 
 启动后访问 **http://localhost:3210**
+
+### 方式二：Docker 部署（推荐）
+
+镜像托管在 [GitHub Container Registry (GHCR)](https://github.com/RDevils7/TgDl/pkgs/container/tgdl)。
+
+#### docker-compose 部署（推荐）
+
+创建 `docker-compose.yml`：
+
+```yaml
+services:
+  tg-dl:
+    image: ghcr.io/rdevils7/tgdl:latest
+    container_name: tg-dl
+    restart: unless-stopped
+    ports:
+      - "3210:3210"
+    volumes:
+      # tdl 登录信息、session 等持久化
+      - ./tdl-data:/root/.tdl
+      # TgDl 应用配置文件（代理设置、登录状态等）
+      - ./app-data:/app/data
+      # 文件下载目录
+      - ./downloads:/app/downloads
+    environment:
+      - TZ=Asia/Shanghai
+      # 如需代理，取消注释并修改：
+      # - PROXY_HOST=your-proxy-host
+      # - PROXY_PORT=7890
+```
+
+然后启动：
+
+```bash
+docker compose up -d
+```
+
+访问 **http://localhost:3210**
+
+#### 直接 docker run
+
+```bash
+docker run -d \
+  --name tg-dl \
+  --restart unless-stopped \
+  -p 3210:3210 \
+  -v $(pwd)/tdl-data:/root/.tdl \
+  -v $(pwd)/app-data:/app/data \
+  -v $(pwd)/downloads:/app/downloads \
+  -e TZ=Asia/Shanghai \
+  ghcr.io/rdevils7/tgdl:latest
+```
+
+#### 持久化目录说明
+
+| 容器路径 | 挂载到 | 说明 |
+|----------|--------|------|
+| `/root/.tdl` | `./tdl-data` | tdl 配置目录，Telegram 登录信息和 session 保存在这里 |
+| `/app/data` | `./app-data` | TgDl 应用配置文件（config.json），包含代理设置、下载默认参数等 |
+| `/app/downloads` | `./downloads` | 文件下载存放目录 |
+
+> ⚠️ 以上三个目录必须挂载为 volume，否则容器重建后数据会丢失。
 
 ## 项目结构
 
@@ -53,84 +94,86 @@ npm start
 tg-dl/
 ├── server.js       # 后端服务（Express）
 ├── package.json    # 依赖配置
+├── Dockerfile       # Docker 镜像定义
 ├── tdl             # tdl CLI 二进制 (v0.20.2)
 ├── public/
 │   ├── index.html  # 前端页面
-│   ├── style.css   # 样式表
+│   ├── style.css   # 样式
 │   └── app.js      # 前端逻辑
-├── data/           # 配置存储（自动创建）
-└── downloads/      # 下载文件存放目录（自动创建）
+├── data/           # 应用配置存储（运行时生成）
+└── downloads/      # 下载文件存放目录（运行时生成）
 ```
 
 ## 使用说明
 
 ### 登录
 
-首次使用需登录 Telegram 账号：
+首次使用需要登录 Telegram 账号：
 
 1. 打开 http://localhost:3210
 2. 选择**扫码登录**或**验证码登录**
-3. 扫码：用手机 Telegram 扫描页面二维码
-4. 验证码：输入手机号 → 收验证码 → 填入确认
+3. 扫码登录：用手机 Telegram 扫描页面二维码
+4. 验证码登录：输入手机号 → 收到验证码 → 填入确认
 
-> ⚠️ 国内网络需配置代理才能连接 Telegram
+> ⚠️ 国内网络需在设置中配置代理才能连接 Telegram。Docker 部署时可在 Web 界面的设置中配置。
 
 ### 下载
 
-1. 粘贴 Telegram 链接（支持格式）：
+1. 粘贴 Telegram 链接（支持以下格式）：
    - 公开频道：`https://t.me/频道名/消息ID`
    - 私有频道：`https://t.me/c/频道ID/消息ID`
-   - 仅频道名：获取最新消息
-2. 按需调整参数（画质、并发、过滤规则等）
-3. 点击「下载」，实时查看进度
-4. 完成后直接下载文件
+   - 仅频道名：自动获取最新消息
+2. 可选调整下载参数（画质、并发数、过滤规则等）
+3. 点击「下载」，页面实时显示进度
+4. 下载完成后可直接下载文件
 
 ### 代理设置
 
-无法直连时在页面中配置：
+如果网络无法直连 Telegram，可在页面设置中配置代理：
 
 | 字段 | 说明 |
 |------|------|
 | 协议 | HTTP 或 SOCKS5 |
 | 地址 | 代理服务器地址 |
 | 端口 | 代理端口 |
-| 用户名 / 密码 | 认证信息（可选） |
+| 用户名 | 认证用户名（可选） |
+| 密码 | 认证密码（可选） |
 
 ## API 接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/proxy` | 设置代理 |
-| GET | `/api/proxy` | 获取代理配置 |
+| GET | `/api/proxy` | 获取当前代理配置 |
 | POST | `/api/login/qr` | 启动扫码登录 |
-| GET | `/api/login/qr/stream` | SSE 流式 QR 终端输出 |
-| POST | `/api/login/code/start` | 验证码登录 - 发送手机号 |
-| POST | `/api/login/code/submit` | 验证码登录 - 提交验证码 |
-| GET | `/api/login/status` | 登录状态查询 |
+| GET | `/api/login/qr/stream` | SSE 流式获取 QR 终端输出 |
+| POST | `/api/login/code/start` | 开始验证码登录 |
+| POST | `/api/login/code/submit` | 提交验证码 |
+| GET | `/api/login/status` | 获取登录状态 |
 | POST | `/api/login/cancel` | 取消登录 |
 | DELETE | `/api/logout` | 退出登录 |
-| POST | `/api/test-connection` | 连通性测试 |
-| POST | `/api/parse` | 解析链接 |
+| POST | `/api/test-connection` | 测试连接 |
+| POST | `/api/parse` | 解析 Telegram 链接 |
 | POST | `/api/download` | 创建下载任务 |
-| GET | `/api/progress/:taskId` | SSE 实时进度推送 |
-| GET | `/api/files/:taskId` | 已下载文件列表 |
-| GET | `/api/file/:taskId/:filename` | 单文件下载 |
+| GET | `/api/progress/:taskId` | SSE 实时进度 |
+| GET | `/api/files/:taskId` | 获取已下载文件列表 |
+| GET | `/api/file/:taskId/:filename` | 下载单个文件 |
 
 ## 技术栈
 
 - **后端**: Node.js + Express
 - **前端**: 原生 HTML/CSS/JavaScript
-- **引擎**: [tdl](https://github.com/iyear/tdl) v0.20.2
-- **终端模拟**: node-pty（QR 登录用）
+- **引擎**: [tdl](https://github.com/iyear/tdl) v0.20.2（Go 语言 Telegram DL 客户端）
+- **终端模拟**: node-pty（用于 QR 扫码登录的 TTY 渲染）
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PORT` | `3210` | 服务端口 |
-| `TDL_PATH` | 自动检测 | tdl 可执行文件路径 |
-| `DOWNLOAD_DIR` | `./downloads` | 下载目录 |
-| `CONFIG_FILE` | `./data/config.json` | 配置文件路径 |
+| `PORT` | `3210` | 服务监听端口 |
+| `TDL_PATH` | `/usr/local/bin/tdl` | tdl 可执行文件路径（Docker 内置） |
+| `DOWNLOAD_DIR` | `/app/downloads` | 文件下载目录 |
+| `CONFIG_FILE` | `/app/data/config.json` | 配置文件路径 |
 
 ## 开源协议
 
