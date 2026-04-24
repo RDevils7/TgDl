@@ -35,8 +35,8 @@ jobs:
           push: false
           load: false
           tags: |
-            ghcr.io/${{ github.repository_owner }}/tg-dl:latest
-            ghcr.io/${{ github.repository_owner }}/tg-dl:${{ github.sha }}
+            ghcr.io/rdevils7/tg-dl:latest
+            ghcr.io/rdevils7/tg-dl:${{ github.sha }}
           build-args: |
             TDL_VERSION=${{ github.event.inputs.tdl_version || 'latest' }}
           outputs: type=docker,dest=/tmp/tg-dl-image.tar
