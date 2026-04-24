@@ -1,53 +1,137 @@
-> [!IMPORTANT]
-> 中文文档可能落后于英文文档，如果有问题请先查看英文文档。
-> 请使用英文发起新的 Issue, 以便于追踪和搜索
+# TgDl — Telegram 文件下载工具
 
-# tdl
+基于 [tdl](https://github.com/iyear/tdl) 的 Web 界面下载工具，支持通过浏览器下载 Telegram 频道/群组中的文件、视频和媒体内容。
 
-<img align="right" src="docs/assets/img/logo.png" height="280" alt="">
+## 功能特性
 
-> 📥 Telegram Downloader, but more than a downloader
+- **Web 图形界面** — 无需命令行操作，浏览器中完成全部操作
+- **扫码登录 / 验证码登录** — 两种 Telegram 登录方式
+- **代理支持** — HTTP / SOCKS5 代理，支持认证
+- **实时进度** — SSE 实时推送下载进度、速度、ETA
+- **批量下载** — 支持并发控制、文件过滤（包含/排除）
+- **断点续传** — 默认开启，中断后可继续
+- **下载设置** — 自定义画质、并发数、线程数、文件名模板等
+- **终端输出** — 实时展示 tdl 原始终端日志
 
-<a href="README.md">English</a> | 简体中文
+## 系统要求
 
-<p>
-<img src="https://img.shields.io/github/go-mod/go-version/iyear/tdl?style=flat-square" alt="">
-<img src="https://img.shields.io/github/license/iyear/tdl?style=flat-square" alt="">
-<img src="https://img.shields.io/github/actions/workflow/status/iyear/tdl/master.yml?branch=master&amp;style=flat-square" alt="">
-<img src="https://img.shields.io/github/v/release/iyear/tdl?color=red&amp;style=flat-square" alt="">
-<img src="https://img.shields.io/github/downloads/iyear/tdl/total?style=flat-square" alt="">
-</p>
+| 环境 | 要求 |
+|------|------|
+| 操作系统 | Windows / Linux / macOS |
+| Node.js | >= 18 |
+| tdl CLI | v0.20.2（已内置） |
 
-#### 特性：
+## 快速开始
 
-- 单文件启动
-- 低资源占用
-- 吃满你的带宽
-- 比官方客户端更快
-- 支持从受保护的会话中下载文件
-- 具有自动回退和消息路由的转发功能
-- 支持上传文件至 Telegram
-- 导出历史消息/成员/订阅者数据至 JSON 文件
+### 1. 安装依赖
 
-## 预览
+```bash
+git clone https://github.com/RDevils7/TgDl.git
+cd TgDl
+npm install
+```
 
-预览中的速度已经达到了代理的限制，同时**速度取决于你是否是付费用户**
+### 2. 配置 tdl
 
-![](docs/assets/img/preview.gif)
+Windows 用户需要将 `tdl.exe` 放到 `C:\tdl\tdl.exe`，或通过环境变量指定：
 
-## 文档
+```bash
+export TDL_PATH=/你的路径/tdl
+```
 
-请参考 [文档](https://docs.iyear.me/tdl/zh/).
+### 3. 启动服务
 
-## 赞助者
+```bash
+npm start
+```
 
-![](https://raw.githubusercontent.com/iyear/sponsor/master/sponsors.svg)
+启动后访问 **http://localhost:3210**
 
-## 贡献者
-<a href="https://github.com/iyear/tdl/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=iyear/tdl&max=750&columns=20" alt="contributors"/>
-</a>
+## 项目结构
 
-## 协议
+```
+tg-dl/
+├── server.js       # 后端服务（Express）
+├── package.json    # 依赖配置
+├── tdl             # tdl CLI 二进制 (v0.20.2)
+├── public/
+│   ├── index.html  # 前端页面
+│   ├── style.css   # 样式表
+│   └── app.js      # 前端逻辑
+├── data/           # 配置存储（自动创建）
+└── downloads/      # 下载文件存放目录（自动创建）
+```
 
-AGPL-3.0 License
+## 使用说明
+
+### 登录
+
+首次使用需登录 Telegram 账号：
+
+1. 打开 http://localhost:3210
+2. 选择**扫码登录**或**验证码登录**
+3. 扫码：用手机 Telegram 扫描页面二维码
+4. 验证码：输入手机号 → 收验证码 → 填入确认
+
+> ⚠️ 国内网络需配置代理才能连接 Telegram
+
+### 下载
+
+1. 粘贴 Telegram 链接（支持格式）：
+   - 公开频道：`https://t.me/频道名/消息ID`
+   - 私有频道：`https://t.me/c/频道ID/消息ID`
+   - 仅频道名：获取最新消息
+2. 按需调整参数（画质、并发、过滤规则等）
+3. 点击「下载」，实时查看进度
+4. 完成后直接下载文件
+
+### 代理设置
+
+无法直连时在页面中配置：
+
+| 字段 | 说明 |
+|------|------|
+| 协议 | HTTP 或 SOCKS5 |
+| 地址 | 代理服务器地址 |
+| 端口 | 代理端口 |
+| 用户名 / 密码 | 认证信息（可选） |
+
+## API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/proxy` | 设置代理 |
+| GET | `/api/proxy` | 获取代理配置 |
+| POST | `/api/login/qr` | 启动扫码登录 |
+| GET | `/api/login/qr/stream` | SSE 流式 QR 终端输出 |
+| POST | `/api/login/code/start` | 验证码登录 - 发送手机号 |
+| POST | `/api/login/code/submit` | 验证码登录 - 提交验证码 |
+| GET | `/api/login/status` | 登录状态查询 |
+| POST | `/api/login/cancel` | 取消登录 |
+| DELETE | `/api/logout` | 退出登录 |
+| POST | `/api/test-connection` | 连通性测试 |
+| POST | `/api/parse` | 解析链接 |
+| POST | `/api/download` | 创建下载任务 |
+| GET | `/api/progress/:taskId` | SSE 实时进度推送 |
+| GET | `/api/files/:taskId` | 已下载文件列表 |
+| GET | `/api/file/:taskId/:filename` | 单文件下载 |
+
+## 技术栈
+
+- **后端**: Node.js + Express
+- **前端**: 原生 HTML/CSS/JavaScript
+- **引擎**: [tdl](https://github.com/iyear/tdl) v0.20.2
+- **终端模拟**: node-pty（QR 登录用）
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `3210` | 服务端口 |
+| `TDL_PATH` | 自动检测 | tdl 可执行文件路径 |
+| `DOWNLOAD_DIR` | `./downloads` | 下载目录 |
+| `CONFIG_FILE` | `./data/config.json` | 配置文件路径 |
+
+## 开源协议
+
+[AGPL-3.0](LICENSE)
