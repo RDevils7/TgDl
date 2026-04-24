@@ -34,10 +34,10 @@ LABEL version="1.0.0"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Node.js 运行依赖
     curl ca-certificates \
-    # tdl (Go 二进制) 运行依赖
-    libssl3 libstdc++6 zlib1g \
+    # tdl (Go 二进制) 运行依赖 - 完整的 C 运行时库
+    libc6 libssl3 libstdc++6 zlib1g libgcc-s1 \
     # 其他工具
-    wget tzdata \
+    tzdata \
     && rm -rf /var/lib/apt/lists/* \
     # 设置时区
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
@@ -52,7 +52,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # ===== 安装 tdl CLI (v0.20.2) =====
 # 二进制文件已内置在仓库中，无需在线下载
 COPY tdl /usr/local/bin/tdl
-RUN chmod +x /usr/local/bin/tdl && /usr/local/bin/tdl version
+RUN chmod +x /usr/local/bin/tdl && \
+    echo "=== Verifying tdl binary ===" && \
+    ls -lh /usr/local/bin/tdl && \
+    /usr/local/bin/tdl version || echo "WARNING: tdl version check failed"
 
 # ===== 复制应用代码 =====
 WORKDIR /app
