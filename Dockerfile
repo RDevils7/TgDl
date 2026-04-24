@@ -61,7 +61,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     fi && \
     URL="https://github.com/iyear/tdl/releases/download/v${TDL_VERSION}/tdl-linux-${TDL_ARCH}" && \
     echo "Installing tdl ${TDL_VERSION} for ${TDL_ARCH}: ${URL}" && \
-    wget -qO "${TDL_PATH}" "${URL}" && \
+    curl -fsSL --retry 3 --retry-delay 2 -o "${TDL_PATH}" "${URL}" && \
     chmod +x "${TDL_PATH}" && \
     ${TDL_PATH} version
 
