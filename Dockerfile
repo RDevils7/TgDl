@@ -50,27 +50,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && echo "Node.js: $(node --version) / npm: $(npm --version)"
 
 # ===== 安装 tdl CLI (iyear/tdl) =====
-ARG TDL_VERSION=latest
+ARG TDL_VERSION=0.18.5
 ENV TDL_PATH=/usr/local/bin/tdl
 
-RUN ARCH=$(dpkg --print-architecture); \
-    echo "Target architecture: ${ARCH}"; \
+RUN ARCH=$(dpkg --print-architecture) && \
+    echo "Target architecture: ${ARCH}" && \
     if [ "$ARCH" = "amd64" ]; then TDL_ARCH="x64"; \
     elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then TDL_ARCH="arm64"; \
     else echo "Unsupported architecture: ${ARCH}" && exit 1; \
-    fi; \
-    if [ "$TDL_VERSION" = "latest" ]; then \
-        TAG=$(curl -fsSL "https://api.github.com/repos/iyear/tdl/releases/latest" | grep '"tag_name"' | head -1 | sed 's/.*"v\([^"]*\)".*/\1/') || TAG="0.18.5"; \
-        URL="https://github.com/iyear/tdl/releases/download/v${TAG}/tdl-linux-${TDL_ARCH}"; \
-    else \
-        URL="https://github.com/iyear/tdl/releases/download/v${TDL_VERSION}/tdl-linux-${TDL_ARCH}"; \
-    fi; \
-    echo "Installing tdl ${TAG} for ${TDL_ARCH}: ${URL}"; \
-    wget -qO "${TDL_PATH}" "${URL}" || { \
-        echo "GitHub download failed, trying alternative..."; \
-        exit 1; \
-    }; \
-    chmod +x "${TDL_PATH}" && ${TDL_PATH} version
+    fi && \
+    URL="https://github.com/iyear/tdl/releases/download/v${TDL_VERSION}/tdl-linux-${TDL_ARCH}" && \
+    echo "Installing tdl ${TDL_VERSION} for ${TDL_ARCH}: ${URL}" && \
+    wget -qO "${TDL_PATH}" "${URL}" && \
+    chmod +x "${TDL_PATH}" && \
+    ${TDL_PATH} version
 
 # ===== 复制应用代码 =====
 WORKDIR /app
