@@ -26,20 +26,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image (multi-arch, no push)
+      - name: Build image (amd64 only, export tar)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: false
-          load: false
-          tags: |
-            ghcr.io/rdevils7/tg-dl:latest
-            ghcr.io/rdevils7/tg-dl:${{ github.sha }}
+          load: true
+          tags: tg-dl:latest
           build-args: |
             TDL_VERSION=${{ github.event.inputs.tdl_version || 'latest' }}
-          outputs: type=docker,dest=/tmp/tg-dl-image.tar
+
+      - name: Export image to tar
+        run: |
+          docker save tg-dl:latest > /tmp/tg-dl-image.tar
+          ls -lh /tmp/tg-dl-image.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
