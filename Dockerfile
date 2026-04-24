@@ -50,20 +50,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && echo "Node.js: $(node --version) / npm: $(npm --version)"
 
 # ===== 安装 tdl CLI (iyear/tdl) =====
-ARG TDL_VERSION=0.18.5
+ARG TDL_VERSION=v0.18.5
 ENV TDL_PATH=/usr/local/bin/tdl
 
-RUN ARCH=$(dpkg --print-architecture) && \
-    echo "Target architecture: ${ARCH}" && \
-    if [ "$ARCH" = "amd64" ]; then TDL_ARCH="x64"; \
-    elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then TDL_ARCH="arm64"; \
-    else echo "Unsupported architecture: ${ARCH}" && exit 1; \
-    fi && \
-    URL="https://github.com/iyear/tdl/releases/download/v${TDL_VERSION}/tdl-linux-${TDL_ARCH}" && \
-    echo "Installing tdl ${TDL_VERSION} for ${TDL_ARCH}: ${URL}" && \
-    curl -fsSL --retry 3 --retry-delay 2 -o "${TDL_PATH}" "${URL}" && \
-    chmod +x "${TDL_PATH}" && \
-    ${TDL_PATH} version
+# 安装 Go 并编译 tdl
+RUN apt-get update && apt-get install -y --no-install-recommends golang-go git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && export GOPROXY=https://goproxy.cn,direct \
+    && go install github.com/iyear/tdl/cmd/tdl@${TDL_VERSION} \
+    && cp $(go env GOPATH)/bin/tdl ${TDL_PATH} \
+    && ${TDL_PATH} version
 
 # ===== 复制应用代码 =====
 WORKDIR /app
