@@ -15,8 +15,13 @@ FROM node:20-slim AS node-deps
 
 WORKDIR /app
 
+# 安装编译原生模块所需的工具（node-pty 需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install && npm cache clean --force
 
 # ---- 第二阶段：最终镜像 ----
 FROM debian:bookworm-slim
