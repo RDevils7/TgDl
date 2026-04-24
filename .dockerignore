@@ -26,3 +26,6 @@ tg-dl-docker.tar.gz
 
 # README（镜像不需要）
 README.md
+
+# tdl 二进制（保留，需要 COPY 进镜像）
+!tdl

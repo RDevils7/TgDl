@@ -49,17 +49,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/* \
     && echo "Node.js: $(node --version) / npm: $(npm --version)"
 
-# ===== 安装 tdl CLI (iyear/tdl) =====
-ARG TDL_VERSION=v0.18.5
-ENV TDL_PATH=/usr/local/bin/tdl
-
-# 安装 Go 并编译 tdl
-RUN apt-get update && apt-get install -y --no-install-recommends golang-go git ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && export GOPROXY=https://goproxy.cn,direct \
-    && go install github.com/iyear/tdl/cmd/tdl@${TDL_VERSION} \
-    && cp $(go env GOPATH)/bin/tdl ${TDL_PATH} \
-    && ${TDL_PATH} version
+# ===== 安装 tdl CLI (v0.20.2) =====
+# 二进制文件已内置在仓库中，无需在线下载
+COPY tdl /usr/local/bin/tdl
+RUN chmod +x /usr/local/bin/tdl && /usr/local/bin/tdl version
 
 # ===== 复制应用代码 =====
 WORKDIR /app
