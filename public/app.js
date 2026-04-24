@@ -266,6 +266,319 @@ async function loadProxyFromBackend() {
     }
 }
 
+// ==================== Bot 通知配置 ====================
+
+let botConfig = { enabled: false, token: '', chatId: '' };
+
+/**
+ * 切换 Bot 启用状态
+ */
+function toggleBotEnabled() {
+    const toggle = $('#botEnabledToggle');
+    const body = $('#botConfigBody');
+    
+    botConfig.enabled = !!toggle.checked;
+    
+    if (botConfig.enabled) {
+        body.style.opacity = '1';
+        body.style.pointerEvents = 'auto';
+    } else {
+        body.style.opacity = '0.5';
+        body.style.pointerEvents = 'auto'; // 仍然允许编辑，只是关闭通知
+    }
+}
+
+/**
+ * 从后端加载 Bot 配置
+ */
+async function loadBotConfig() {
+    try {
+        const res = await fetch('/api/bot');
+        const cfg = await res.json();
+        botConfig.enabled = cfg.enabled;
+        // token 不从后端恢复完整值（安全考虑），只显示是否已配置
+        if (cfg.token) {
+            $('#botTokenInput').placeholder = `已配置 (****${cfg.token})`;
+        }
+        if (cfg.chatId) {
+            $('#botChatIdInput').value = cfg.chatId;
+        }
+        
+        const toggle = $('#botEnabledToggle');
+        toggle.checked = cfg.enabled;
+        toggleBotEnabled();
+
+        // 同步轮询状态（优先实时状态，其次持久化状态）
+        syncBotPollStatus();
+        
+        // 如果轮询没在运行但配置中标记为启用，说明刚重启，显示为已启用（后端会自动恢复）
+        restorePollToggle();
+    } catch(e) {
+        console.warn('[bot] 加载配置失败:', e);
+    }
+}
+
+/**
+ * 保存 Bot 配置到后端
+ */
+async function saveBotConfig() {
+    const token = $('#botTokenInput').value.trim();
+    const chatId = $('#botChatIdInput').value.trim();
+
+    if (!token || !chatId) {
+        showBotResult({ success: false, message: '⚠️ 请填写完整的 Bot Token 和 Chat ID' });
+        return;
+    }
+
+    // 验证 Token 格式（基本校验）
+    if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) {
+        showBotResult({ success: false, message: '❌ Token 格式不正确（应为 数字:字母数字）' });
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/bot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: token,
+                chatId: chatId,
+                enabled: botConfig.enabled || true
+            })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            showBotResult({ success: true, message: '✅ Bot 配置已保存' });
+            // 更新 placeholder
+            $('#botTokenInput').placeholder = `已配置 (****${token.slice(-6)})`;
+            $('#botTokenInput').value = ''; // 清空输入框中的明文
+        } else {
+            showBotResult({ success: false, message: '❌ 保存失败' });
+        }
+    } catch(e) {
+        showBotResult({ success: false, message: '❌ 网络错误: ' + e.message });
+    }
+}
+
+/**
+ * 发送测试消息
+ */
+async function testBot() {
+    const btn = $('#testBotBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="display:inline-block;width:14px;height:14px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg></span> 发送中...';
+
+    const token = $('#botTokenInput').value.trim();
+    const chatId = $('#botChatIdInput').value.trim();
+
+    try {
+        const res = await fetch('/api/bot/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, chatId })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showBotResult({
+                success: true,
+                connected: true,
+                message: `✅ 测试消息发送成功！耗时 ${data.elapsed}ms`
+            });
+        } else {
+            let suggestion = '';
+            if (data.error?.includes('401') || data.error?.includes('Unauthorized')) {
+                suggestion = '💡 Token 无效或已过期，请重新从 @BotFather 获取';
+            } else if (data.error?.includes('chat not found') || data.error?.includes('Forbidden')) {
+                suggestion = '💡 Chat ID 不正确。请先向你的 Bot 发送一条消息（/@your_bot），或确认频道/群组已添加 Bot';
+            } else if (data.error?.includes('network') || data.error?.includes('timeout')) {
+                suggestion = '💡 网络问题，请检查代理设置';
+            }
+            showBotResult({
+                success: false,
+                connected: false,
+                error: true,
+                message: `❌ ${data.error || '发送失败'}`,
+                suggestion: suggestion
+            });
+        }
+    } catch(e) {
+        showBotResult({ success: false, message: '❌ 请求失败: ' + e.message });
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '📨 发送测试消息';
+    }
+}
+
+/**
+ * 显示 Bot 测试结果
+ */
+function showBotResult(data) {
+    const el = $('#botTestResult');
+
+    let icon = data.connected === false ? '❌' : (data.connected === true ? '✅' : '⚠️');
+    let cls = data.connected === true ? 'success' : (data.error ? 'error' : 'warning');
+
+    let html = `<div class="conn-test-inner conn-${cls}">`;
+    html += `<div class="conn-test-msg">${icon} ${data.message || ''}</div>`;
+    if (data.suggestion) {
+        html += `<div class="conn-suggestion">${data.suggestion}</div>`;
+    }
+    html += `</div>`;
+
+    el.innerHTML = html;
+    el.classList.remove('hidden');
+
+    if (data.connected === true) {
+        setTimeout(() => el.classList.add('hidden'), 4000);
+    }
+}
+
+function onBotConfigChanged() {
+    // 清除之前的测试结果
+    $('#botTestResult').classList.add('hidden');
+}
+
+// ==================== Bot 消息轮询（自动下载）====================
+
+let pollStatusTimer = null;
+
+/**
+ * 切换 Bot 轮询开关
+ */
+async function toggleBotPolling() {
+    const toggle = $('#botPollToggle');
+    const enable = toggle.checked;
+
+    try {
+        const url = enable ? '/api/bot/poll/start' : '/api/bot/poll/stop';
+        const res = await fetch(url, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.success) {
+            updateBotPollUI(enable);
+            if (enable) {
+                // 启动状态轮询
+                startPollStatusTimer();
+            } else {
+                stopPollStatusTimer();
+            }
+        } else {
+            // 操作失败，回滚开关状态
+            toggle.checked = !enable;
+            showBotResult({ success: false, error: true, message: `❌ ${data.message}` });
+        }
+    } catch(e) {
+        toggle.checked = !enable;
+        showBotResult({ success: false, error: true, message: '❌ 网络错误: ' + e.message });
+    }
+}
+
+/**
+ * 更新轮询 UI 显示
+ */
+function updateBotPollUI(active) {
+    const statusEl = $('#botPollStatus');
+    
+    if (active) {
+        statusEl.innerHTML = '<span style="color:#4ade80">● 运行中</span> · 正在监听 Bot 消息...';
+    } else {
+        statusEl.innerHTML = '<span style="color:var(--text-muted)">● 已停止</span> 点击开启自动下载';
+    }
+}
+
+/**
+ * 定时刷新轮询状态（每 10 秒）
+ */
+function startPollStatusTimer() {
+    stopPollStatusTimer();
+    refreshPollStatus();
+    pollStatusTimer = setInterval(refreshPollStatus, 10000);
+}
+
+function stopPollStatusTimer() {
+    if (pollStatusTimer) {
+        clearInterval(pollStatusTimer);
+        pollStatusTimer = null;
+    }
+}
+
+/**
+ * 从后端获取轮询状态并更新 UI
+ */
+async function refreshPollStatus() {
+    try {
+        const res = await fetch('/api/bot/poll/status');
+        const data = await res.json();
+
+        // 同步开关状态
+        const toggle = $('#botPollToggle');
+        if (toggle.checked !== data.active) {
+            toggle.checked = data.active;
+        }
+
+        const statusEl = $('#botPollStatus');
+
+        if (data.active) {
+            const lastTime = data.lastPollTime 
+                ? new Date(data.lastPollTime).toLocaleTimeString('zh-CN') 
+                : '--';
+            
+            let html = '<span style="color:#4ade80">● 运行中</span>';
+            html += `<br><span style="opacity:0.7">上次轮询: ${lastTime}</span>`;
+            html += `<br><span style="opacity:0.5">消息: ${data.totalMessages} 条 | 自动下载: ${data.autoDownloads} 个`;
+            
+            if (data.errors > 0) {
+                html += `<br><span style="color:#f87171">错误: ${data.errors}</span>`;
+            }
+            
+            statusEl.innerHTML = html;
+        } else {
+            updateBotPollUI(false);
+        }
+    } catch(e) {
+        console.warn('[poll] 状态刷新失败:', e);
+    }
+}
+
+// 页面打开设置时，检查并同步轮询状态
+async function syncBotPollStatus() {
+    try {
+        const res = await fetch('/api/bot/poll/status');
+        const data = await res.json();
+        
+        $('#botPollToggle').checked = data.active;
+        updateBotPollUI(data.active);
+        
+        if (data.active) {
+            startPollStatusTimer();
+        }
+    } catch(e) {
+        console.warn('[poll] 状态同步失败:', e);
+    }
+}
+
+/**
+ * 从后端 Bot 配置中恢复轮询开关（持久化）
+ */
+async function restorePollToggle() {
+    try {
+        const res = await fetch('/api/bot');
+        const cfg = await res.json();
+        // pollEnabled 是持久化字段，反映用户之前的设置
+        // active 是实时运行状态，两者可能不一致（比如刚重启还没恢复）
+        if (cfg.pollEnabled) {
+            $('#botPollToggle').checked = true;
+            updateBotPollUI(true);
+            // 启动状态刷新定时器
+            startPollStatusTimer();
+        }
+    } catch(e) {
+        console.warn('[poll] 开关恢复失败:', e);
+    }
+}
+
 // ==================== 全局下载默认设置 ====================
 
 /**
@@ -1113,9 +1426,11 @@ function toggleSettings() {
         // 打开时从后端加载最新配置
         loadProxyFromBackend();
         loadDlSettings();  // 加载全局下载默认设置
+        loadBotConfig();   // 加载 Bot 通知配置
     } else {
         sidebar.classList.remove('open');
         overlay.classList.remove('active');
+        stopPollStatusTimer();  // 关闭侧栏时停止轮询状态刷新
     }
 }
 

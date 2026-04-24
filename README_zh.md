@@ -1,10 +1,11 @@
 # TgDl — Telegram 文件下载工具
 
 <p>
-  <a href="https://github.com/RDevils7/TgDl"><img src="https://img.shields.io/badge/version-v2.1-blue?style=flat-square" alt="version"></a>
+  <a href="https://github.com/RDevils7/TgDl"><img src="https://img.shields.io/badge/version-v2.2-blue?style=flat-square" alt="version"></a>
   <a href="https://github.com/RDevils7/TgDl/pkgs/container/tgdl"><img src="https://img.shields.io/badge/ghcr-tgdl-00a6ed?style=flat-square" alt="ghcr"></a>
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green?style=flat-square" alt="license">
-  <a href="#%E5%8A%9F%E8%83%BD%E7%89%B9%E6%80%A7"><img src="https://img.shields.io/badge/-移动端适配-orange?style=flat-square" alt="mobile"></a>
+  <a href="#%E5%8A%9F%E8%83%BD%E7%89%B9%E6%80%A7"><img src="https://img.shields.io/badge/-Bot轮询-orange?style=flat-square" alt="bot"></a>
+  <a href="#%E5%8A%9F%E8%83%BD%E7%89%B9%E6%80%A7"><img src="https://img.shields.io/badge/-移动端适配-lightgrey?style=flat-square" alt="mobile"></a>
 </p>
 
 基于 [tdl](https://github.com/iyear/tdl) 的 **Web 可视化界面**，让你在浏览器中轻松下载 Telegram 频道/群组中的文件、视频和媒体内容 —— 无需敲一行命令。
@@ -17,6 +18,7 @@
 
 | 特性 | 说明 |
 |------|------|
+| 🤖 **Bot 轮询下载** | 给 Bot 发送 Telegram 链接即可自动下载，全生命周期通知（开始/完成/失败） |
 | 🖥️ Web 图形界面 | 全部操作在浏览器完成，无需命令行 |
 | 📱 移动端完美适配 | 4 级响应式断点，手机/平板/横屏均可流畅使用 |
 | 🔐 双登录方式 | 支持扫码登录和手机验证码登录 |
@@ -160,6 +162,12 @@ tg-dl/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/bot` | 获取 Bot 配置 |
+| POST | `/api/bot` | 保存 Bot 配置（Token / Chat ID） |
+| POST | `/api/bot/test` | 发送测试消息验证 Bot 连接 |
+| GET | `/api/bot/poll/status` | 查询轮询运行状态 |
+| POST | `/api/bot/poll/start` | 启动 Bot 轮询监听 |
+| POST | `/api/bot/poll/stop` | 停止 Bot 轮询监听 |
 | GET | `/api/download-settings` | 获取下载默认设置 |
 | POST | `/api/download-settings` | 保存下载默认设置 |
 | POST | `/api/proxy` | 设置代理 |
@@ -202,7 +210,19 @@ tg-dl/
 
 ## 📋 版本历史
 
-### v2.1 — 当前版本
+### v2.2 — 当前版本
+
+- 🤖 **Telegram Bot 轮询下载**
+  - 给 Bot 发消息即可自动下载，无需打开 Web 界面
+  - 自动识别 `t.me` 链接并触发下载
+  - 全生命周期通知：🚀 下载开始（链接/来源/参数）、🎉 下载完成（文件列表/大小/耗时）、❌ 下载失败（原因/建议）
+  - 轮询状态实时查看（活跃状态 / 消息数 / 错误数）
+  - 消息发送自动重试（3 次重试 + 指数退避，应对代理 TLS 不稳定）
+- 🔧 **稳定性提升**
+  - 修复 `node-fetch` + HttpsProxyAgent 长轮询 TLS 不稳定问题，改用短轮询模式
+  - Bot 消息发送内置重试机制，大幅提高通知到达率
+
+### v2.1
 
 - 📱 **全面移动端适配**
   - 4 级响应式断点（≤480px / 481~600px / 601~768px / 横屏模式）

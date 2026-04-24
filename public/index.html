@@ -313,6 +313,79 @@
                 </div>
                 <div id="dlSettingsSavedHint" class="conn-test-result hidden"></div>
             </div>
+
+            <!-- ==================== Bot 通知设置 ==================== -->
+            <div class="settings-section">
+                <h3>🤖 Bot 通知</h3>
+                <p class="settings-section-hint">下载完成后通过 Telegram Bot 推送通知</p>
+
+                <!-- 开关 -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                    <label class="toggle-option" style="margin:0;" onclick="toggleBotEnabled()">
+                        <span>启用通知</span>
+                        <input type="checkbox" id="botEnabledToggle" onchange="toggleBotEnabled()">
+                        <span class="toggle-switch-sm"></span>
+                    </label>
+                </div>
+
+                <!-- 配置表单（可折叠） -->
+                <div id="botConfigBody">
+
+                    <!-- Bot Token -->
+                    <div class="set-dl-row">
+                        <label>Bot Token</label>
+                        <input type="password" id="botTokenInput" class="styled-input-sm"
+                               placeholder="123456:ABC-DEF..." autocomplete="off"
+                               oninput="onBotConfigChanged()" />
+                        <span class="form-hint" style="font-size:0.7rem;color:var(--text-muted);margin-top:3px;display:block;">
+                            从 @BotFather 获取
+                            <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer"
+                               style="color:var(--accent-cyan)">打开 BotFather → /newbot</a>
+                        </span>
+                    </div>
+
+                    <!-- Chat ID -->
+                    <div class="set-dl-row" style="margin-top:10px;">
+                        <label>Chat ID</label>
+                        <input type="text" id="botChatIdInput" class="styled-input-sm"
+                               placeholder="你的 Chat ID（数字或 @channel）"
+                               oninput="onBotConfigChanged()" />
+                        <span class="form-hint" style="font-size:0.7rem;color:var(--text-muted);margin-top:3px;display:block;">
+                            个人聊天填数字 ID，频道/群组填 @username 或数字
+                            <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer"
+                               style="color:var(--accent-cyan)">@userinfobot 查询</a>
+                        </span>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="proxy-actions" style="margin-top:14px; border-top:1px solid rgba(255,255,255,0.06); padding-top:12px;">
+                        <button class="btn-primary btn-save-proxy" onclick="saveBotConfig()" style="width:auto;flex:1;padding:12px 20px;">
+                            💾 保存配置
+                        </button>
+                        <button class="btn-test" id="testBotBtn" onclick="testBot()" style="width:auto;flex:1;padding:12px 16px;">
+                            📨 发送测试消息
+                        </button>
+                    </div>
+                    <div id="botTestResult" class="conn-test-result hidden"></div>
+
+                    <!-- 消息监听（自动下载） -->
+                    <div style="margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.06);">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                            <span style="font-size:0.82rem;color:var(--text-primary);font-weight:500;">
+                                📥 消息监听
+                            </span>
+                            <label class="toggle-option" style="margin:0;" onclick="toggleBotPolling()">
+                                <span>自动下载</span>
+                                <input type="checkbox" id="botPollToggle" onchange="toggleBotPolling()">
+                                <span class="toggle-switch-sm"></span>
+                            </label>
+                        </div>
+                        <div id="botPollStatus" style="font-size:0.74rem;color:var(--text-muted);line-height:1.5;">
+                            未启动
+                        </div>
+                    </div>
+                </div>
+            </div>
         </aside>
 
         <!-- ==================== 登录弹窗 ==================== -->

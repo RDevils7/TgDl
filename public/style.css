@@ -1475,6 +1475,38 @@ body {
     margin-bottom: 14px;
 }
 
+/* Bot 配置区域 */
+#botConfigBody {
+    transition: opacity 0.2s ease;
+}
+
+#botTokenInput {
+    font-family: 'Courier New', monospace, monospace !important;
+    letter-spacing: 0.5px;
+}
+
+/* Bot 链接提示 */
+.settings-section-hint a {
+    color: var(--accent-cyan);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(103, 232, 249, 0.5);
+}
+.settings-section-hint a:hover {
+    color: #67e8f9;
+}
+
+/* Bot 测试结果中的链接 */
+.bot-result-link {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 4px 10px;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 6px;
+    color: var(--accent-indigo);
+    font-size: 0.78rem;
+    text-decoration: none;
+}
+
 /* 代理开关行 */
 .proxy-toggle-row {
     display: flex;
@@ -2044,6 +2076,32 @@ body {
         font-size: 0.68rem;
         line-height: 1.5;
         opacity: 0.55;
+    }
+
+    /* ====== Bot 配置面板移动端适配 ====== */
+    .settings-section h3 { font-size: 0.86rem; }
+
+    #botConfigBody { margin-top: 8px; }
+
+    #botTokenInput, #botChatIdInput {
+        padding: 11px 12px !important;
+        font-size: 0.82rem !important; /* Token 用等宽但缩小 */
+        border-radius: 8px;
+    }
+
+    #botTokenInput {
+        letter-spacing: -0.2px; /* 移动端稍微紧凑 */
+    }
+
+    .proxy-actions[style*="margin-top:14px"] {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    /* 轮询状态区域移动端 */
+    #botPollStatus {
+        font-size: 0.7rem !important;
+        line-height: 1.45;
     }
 
     /* ====== 设置侧栏 - 全屏覆盖 ====== */

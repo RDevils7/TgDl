@@ -44,6 +44,17 @@ if (!fs.existsSync(dataDir)) {
 // 存储任务状态
 const tasks = new Map();
 
+// Bot 轮询状态
+let botPolling = {
+    active: false,
+    interval: null,
+    lastUpdateId: 0,      // getUpdates offset，避免重复处理
+    lastPollTime: null,
+    totalMessages: 0,
+    autoDownloads: 0,
+    errors: 0
+};
+
 // ==================== 配置持久化 ====================
 
 /**
@@ -76,6 +87,12 @@ const defaultConfig = {
         template: '',
         delay: '',
         reconnect: ''
+    },
+    bot: {
+        enabled: false,
+        token: '',
+        chatId: '',
+        pollEnabled: false      // 消息监听自动下载开关（持久化）
     }
 };
 
@@ -93,7 +110,8 @@ function loadConfig() {
                 ...loaded,
                 proxy: { ...defaultConfig.proxy, ...(loaded.proxy || {}) },
                 loginStatus: { ...defaultConfig.loginStatus, ...(loaded.loginStatus || {}) },
-                download: { ...defaultConfig.download, ...(loaded.download || {}) }
+                download: { ...defaultConfig.download, ...(loaded.download || {}) },
+                bot: { ...defaultConfig.bot, ...(loaded.bot || {}) }
             };
         }
     } catch (e) {
@@ -116,6 +134,528 @@ function saveConfig(config) {
 // 全局配置（启动时加载）
 let appConfig = loadConfig();
 console.log(`[config] 配置已加载 (代理${appConfig.proxy.enabled ? '已启用' : '未启用'})`);
+
+// ==================== Bot 通知配置 ====================
+
+function getBotConfig() {
+    return appConfig.bot || { ...defaultConfig.bot };
+}
+
+app.get('/api/bot', (req, res) => {
+    const cfg = getBotConfig();
+    // Token 只返回后4位用于确认是否已配置
+    const maskedToken = cfg.token ? cfg.token.slice(-6) : '';
+    res.json({
+        enabled: cfg.enabled,
+        token: maskedToken,
+        chatId: cfg.chatId,
+        pollEnabled: !!cfg.pollEnabled
+    });
+});
+
+app.post('/api/bot', (req, res) => {
+    const { token, chatId } = req.body;
+    let enabled = false;
+
+    if (token && chatId) {
+        enabled = true;
+    }
+
+    appConfig.bot = {
+        enabled,
+        token: (token || '').trim(),
+        chatId: String(chatId || '').trim()
+    };
+    saveConfig(appConfig);
+    console.log(`[bot] 配置已保存 (enabled=${enabled})`);
+    res.json({ success: true, message: enabled ? 'Bot 已启用' : 'Bot 已关闭' });
+});
+
+/**
+ * 通过 Telegram Bot API 发送消息
+ * POST /api/bot/send - 发送消息到 Bot（内部使用或测试）
+ * @param {string} text - 消息内容
+ * @param {boolean} testMode - 是否为测试模式（返回详细错误）
+ */
+/**
+ * 发送单次 Telegram 消息（内部实现，无重试）
+ * @private
+ */
+function _sendOnce(fetchModule, url, payload, proxyAddr) {
+    return new Promise((resolve, reject) => {
+        const fetchOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            timeout: 15000
+        };
+
+        if (proxyAddr) {
+            try {
+                const isSocks = proxyAddr.startsWith('socks');
+                if (isSocks) {
+                    const { SocksProxyAgent } = require('socks-proxy-agent');
+                    fetchOptions.agent = new SocksProxyAgent(proxyAddr);
+                } else {
+                    const { HttpsProxyAgent } = require('https-proxy-agent');
+                    fetchOptions.agent = new HttpsProxyAgent(proxyAddr);
+                }
+            } catch(e) {
+                return reject(new Error('代理 Agent 创建失败: ' + e.message));
+            }
+        }
+
+        fetchModule(url, fetchOptions)
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    resolve({ success: true, messageId: data.result?.message_id });
+                } else {
+                    reject(new Error(data.description || 'API 错误'));
+                }
+            })
+            .catch(reject);
+    });
+}
+
+/**
+ * 发送 Telegram Bot 消息（带自动重试，最多 3 次）
+ */
+async function sendTelegramMessage(text, options = {}) {
+    const cfg = getBotConfig();
+    if (!cfg.enabled || !cfg.token || !cfg.chatId) {
+        return { success: false, error: 'Bot 未配置' };
+    }
+
+    const url = `https://api.telegram.org/bot${cfg.token}/sendMessage`;
+    const payload = {
+        chat_id: cfg.chatId,
+        text: text,
+        parse_mode: 'HTML',
+        ...options.messageOptions
+    };
+
+    let fetchModule;
+    try { fetchModule = require('node-fetch'); }
+    catch(e) {
+        try { fetchModule = require('cross-fetch'); }
+        catch(e2) { return { success: false, error: '缺少 HTTP 客户端依赖' }; }
+    }
+
+    const proxyAddr = getProxyArg();
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const result = await _sendOnce(fetchModule, url, payload, proxyAddr);
+            console.log(`[bot] 消息发送成功 (第${attempt}次), messageId:`, result.messageId);
+            return result;
+        } catch(err) {
+            const isLast = attempt >= maxRetries;
+
+            // 提供更有针对性的错误提示
+            let hint = '';
+            if (!proxyAddr && err.message.includes('socket') && err.message.includes('disconnect')) {
+                hint = ' (提示：访问 Telegram 需要代理，请在设置中配置代理)';
+            } else if (proxyAddr && err.message.includes('ECONNREFUSED')) {
+                hint = ' (提示：无法连接到代理服务器，请检查代理是否运行)';
+            } else if (err.message.includes('TLS') || err.message.includes('secure')) {
+                hint = ' (提示：代理 TLS 握手失败)';
+            }
+
+            if (isLast) {
+                console.error(`[bot] 消息发送失败 (${maxRetries}次均失败):`, err.message);
+                return { success: false, error: err.message + hint };
+            }
+
+            console.warn(`[bot] 第${attempt}次发送失败，重试中... (${err.message.slice(0, 60)})`);
+            // 重试前等待：指数退避 1s → 2s
+            await new Promise(r => setTimeout(r, attempt * 1000));
+
+            // 关键：每次重试创建新的 agent（复用的 agent 连接可能已损坏）
+            if (proxyAddr) {
+                try {
+                    // 下一次循环的 _sendOnce 会重新创建 agent
+                } catch(e) {}
+            }
+        }
+    }
+}
+
+/**
+ * Bot 通知：下载失败
+ * @param {Object} task - 下载任务
+ * @param {string} errorDetail - 错误详情
+ */
+function notifyBotDownloadError(task, errorDetail) {
+    const botCfg = getBotConfig();
+    if (!botCfg.enabled || !botCfg.token || !botCfg.chatId) return;
+
+    const isBotSource = task.source === 'bot';
+    const urlLine = task.urls?.[0] ? '\n🔗 <code>' + escapeHtml(task.urls[0]) + '</code>' : '';
+    const sourceLine = isBotSource ? '\n📨 ' + (task.sourceInfo || '') : '';
+
+    // 截断错误信息（Telegram 消息限制 4096 字符）
+    let shortError = (errorDetail || '未知错误').substring(0, 300);
+    
+    sendTelegramMessage(
+        '❌ <b>下载失败</b>' + sourceLine + '\n\n'
+        + '⚠️ 原因: <code>' + escapeHtml(shortError) + '</code>'
+        + urlLine
+        + '\n\n💡 请检查链接是否有效或网络连接'
+    ).then(r => {
+        if (!r.success) {
+            console.warn('[bot] 失败通知发送异常:', r.error);
+        }
+    });
+}
+
+/**
+ * POST /api/bot/test - 测试 Bot 连接（发送一条测试消息）
+ */
+app.post('/api/bot/test', async (req, res) => {
+    const startTime = Date.now();
+    const cfg = getBotConfig();
+
+    if (!cfg.token || !cfg.chatId) {
+        return res.json({
+            success: false,
+            error: '请先填写 Bot Token 和 Chat ID'
+        });
+    }
+
+    // 测试时允许用临时传入的值覆盖保存的配置
+    const testToken = req.body.token || cfg.token;
+    const testChatId = req.body.chatId || cfg.chatId;
+
+    // 临时设置用于本次测试
+    const originalToken = cfg.token;
+    const originalChatId = cfg.chatId;
+    cfg.token = testToken;
+    cfg.chatId = testChatId;
+
+    const result = await sendTelegramMessage(
+        '🔔 <b>TG-DL 测试通知</b>\n\n'
+        + '✅ Bot 连接成功！\n'
+        + '🕐 时间: <code>' + new Date().toLocaleString('zh-CN') + '</code>\n'
+        + '⚙️ 引擎: <b>tdl</b> · Powered by <a href="https://github.com/RDevils7/TgDl">TgDl v2.1</a>'
+    );
+
+    const elapsed = Date.now() - startTime;
+
+    // 恢复原始配置（不保存）
+    cfg.token = originalToken;
+    cfg.chatId = originalChatId;
+
+    res.json({
+        ...result,
+        elapsed: elapsed
+    });
+});
+
+// ==================== Bot 消息轮询（自动下载）====================
+
+/**
+ * 从文本中提取 Telegram 链接
+ * 支持格式：
+ *   - t.me/xxx/123
+ *   - https://t.me/xxx/123
+ *   - telegram.me/xxx/123
+ *   - @channel_name（不包含链接，仅提及）
+ */
+function extractTelegramUrls(text) {
+    if (!text) return [];
+
+    const urls = [];
+
+    // 匹配 t.me 和 telegram.me 链接
+    // 匹配 t.me/xxx/123 或 t.me/xxx 或 https://t.me/xxx/123 等
+    const urlRegex = /(?:https?:\/\/)?(?:t\.me|telegram\.me)\/([a-zA-Z_][\w_]*)(?:\/(\d+))?/gi;
+    let match;
+    while ((match = urlRegex.exec(text)) !== null) {
+        const fullUrl = match[0].startsWith('http') ? match[0] : 'https://' + match[0];
+        // 去重
+        if (!urls.find(u => u.url === fullUrl)) {
+            urls.push({
+                url: fullUrl,
+                channel: match[1],
+                messageId: match[2] || null
+            });
+        }
+    }
+
+    return urls;
+}
+
+/**
+ * 通过 Bot API getUpdates 获取新消息
+ * @returns {Promise<Array>} 新消息列表
+ */
+async function botGetUpdates() {
+    const cfg = getBotConfig();
+    if (!cfg.token) return [];
+
+    const fetchModule = require('node-fetch');
+    
+    // 短轮询模式：不使用 Telegram 的长轮询（timeout=0）
+    // 原因：node-fetch v2 + HttpsProxyAgent 在长连接（>20s）下 TLS 不稳定
+    // 用 setInterval 控制轮询频率，更可靠
+    let url = `https://api.telegram.org/bot${cfg.token}/getUpdates?timeout=0&limit=10`;
+    if (botPolling.lastUpdateId > 0) {
+        url += `&offset=${botPolling.lastUpdateId + 1}`;
+    }
+
+    const fetchOptions = {
+        method: 'GET',
+        timeout: 15000  // 短超时，配合 timeout=0
+    };
+
+    // 复用代理配置
+    const proxyAddr = getProxyArg();
+    if (proxyAddr) {
+        try {
+            const { HttpsProxyAgent } = require('https-proxy-agent');
+            fetchOptions.agent = new HttpsProxyAgent(proxyAddr);
+        } catch(e) {
+            console.error('[bot-poll] 代理 agent 创建失败:', e.message);
+        }
+    }
+
+    try {
+        const res = await fetchModule(url, fetchOptions);
+        const data = await res.json();
+
+        if (!data.ok) {
+            console.error('[bot-poll] getUpdates 错误:', data.description);
+            return [];
+        }
+
+        const updates = data.result || [];
+        
+        // 更新 offset 到最后一条消息的 update_id
+        if (updates.length > 0) {
+            botPolling.lastUpdateId = updates[updates.length - 1].update_id;
+            botPolling.totalMessages += updates.length;
+            
+            // 只返回 message 类型的更新（排除 edited_message, channel_post 等）
+            return updates
+                .filter(u => u.message && u.message.text)
+                .map(u => ({
+                    updateId: u.update_id,
+                    chatId: u.message.chat.id,
+                    text: u.message.text,
+                    from: u.message.from ? (u.message.from.username || u.message.from.first_name) : 'unknown',
+                    date: new Date(u.message.date * 1000)
+                }));
+        }
+
+        return [];
+    } catch(err) {
+        console.error('[bot-poll] getUpdates 请求失败:', err.message);
+        botPolling.errors++;
+        return [];
+    }
+}
+
+/**
+ * 为提取到的 URL 自动创建下载任务
+ * @param {Array} extractedUrls - extractTelegramUrls 的结果
+ * @param {Object} sourceMessage - 来源消息信息
+ */
+function autoDownloadFromUrls(extractedUrls, sourceMessage) {
+    if (!extractedUrls || extractedUrls.length === 0) return;
+
+    const dlConfig = getDlConfig();
+
+    extractedUrls.forEach(item => {
+        const id = uuidv4();
+        const taskDir = path.join(DOWNLOAD_DIR, id);
+        if (!fs.existsSync(taskDir)) fs.mkdirSync(taskDir, { recursive: true });
+
+        const downloadOptions = {
+            quality: dlConfig.quality || 'source',
+            limit: parseInt(dlConfig.limit) || 2,
+            threads: parseInt(dlConfig.threads) || 4,
+            include: dlConfig.include || '',
+            exclude: dlConfig.exclude || '',
+            desc: !!dlConfig.desc,
+            skipSame: dlConfig.skipSame !== false,
+            group: !!dlConfig.group,
+            rewriteExt: !!dlConfig.rewriteExt,
+            template: dlConfig.template || '',
+            delay: dlConfig.delay || '',
+            reconnect: dlConfig.reconnect || ''
+        };
+
+        const task = {
+            id,
+            status: 'preparing',
+            progress: 0,
+            totalBytes: 0,
+            downloadedBytes: 0,
+            speed: 0,
+            fileName: '--',
+            fileNames: [],
+            currentFile: '',
+            totalFiles: 0,
+            completedFiles: 0,
+            startTime: Date.now(),
+            urls: [item.url],
+            options: downloadOptions,
+            log: [],
+            ttyOutput: '',
+            source: 'bot',           // 标记来源为 Bot
+            sourceInfo: `来自 @${sourceMessage.from} 的转发`
+        };
+
+        tasks.set(id, task);
+
+        addLog(task, `🤖 Bot 自动下载 · ${item.url}`);
+        addLog(task, `📨 来源: ${sourceMessage.sourceInfo}`);
+
+        console.log(`[bot-auto] 创建下载任务 ${id}: ${item.url}`);
+
+        // 启动下载
+        startTdlDownload(id, taskDir);
+        botPolling.autoDownloads++;
+
+        // ====== Bot 通知：下载开始 ======
+        sendTelegramMessage(
+            '🚀 <b>开始下载</b>\n\n'
+            + '🔗 <code>' + escapeHtml(item.url) + '</code>\n'
+            + '📨 来源: <b>' + escapeHtml(sourceMessage.from) + '</b>\n'
+            + '⚙️ 并发: ' + downloadOptions.limit + ' | 线程: ' + downloadOptions.threads
+            + (downloadOptions.quality ? '\n🎬 画质: ' + downloadOptions.quality : '')
+        ).then(r => {
+            if (!r.success) {
+                console.warn('[bot-auto] 开始通知发送失败:', r.error);
+            }
+        });
+    });
+}
+
+/**
+ * 单次轮询：获取新消息 → 提取链接 → 自动下载
+ */
+async function pollOnce() {
+    if (!botPolling.active) return;
+
+    botPolling.lastPollTime = new Date().toISOString();
+
+    const messages = await botGetUpdates();
+
+    for (const msg of messages) {
+        // 提取 Telegram 相关链接
+        const urls = extractTelegramUrls(msg.text);
+        
+        if (urls.length > 0) {
+            console.log(`[bot-poll] 发现 ${urls.length} 个 TG 链接 from ${msg.from}:`, urls.map(u => u.url));
+            autoDownloadFromUrls(urls, msg);
+        } else {
+            console.log(`[bot-poll] 无 TG 链接 from ${msg.from}: "${msg.text.substring(0, 50)}"`);
+        }
+    }
+}
+
+/**
+ * 启动 Bot 轮询
+ */
+function startBotPolling() {
+    if (botPolling.active) {
+        return { success: false, message: '轮询已在运行中' };
+    }
+
+    const cfg = getBotConfig();
+    if (!cfg.enabled || !cfg.token || !cfg.chatId) {
+        return { success: false, message: 'Bot 未完整配置' };
+    }
+
+    botPolling.active = true;
+    botPolling.errors = 0;
+    
+    // 持久化：标记轮询已启用
+    appConfig.bot.pollEnabled = true;
+    saveConfig(appConfig);
+    
+    // 立即执行一次
+    pollOnce();
+    
+    // 每 10 秒轮询一次（短轮询模式：timeout=0，不用长轮询）
+    botPolling.interval = setInterval(() => {
+        pollOnce();
+    }, 10000);
+
+    console.log(`[bot-poll] ✅ 轮询已启动 (间隔: 15s, chatId: ${cfg.chatId})`);
+    
+    return { 
+        success: true, 
+        message: 'Bot 监听已启动',
+        interval: 15000 
+    };
+}
+
+/**
+ * 停止 Bot 轮询
+ */
+function stopBotPolling() {
+    if (!botPolling.active) {
+        return { success: false, message: '轮询未在运行' };
+    }
+
+    botPolling.active = false;
+    if (botPolling.interval) {
+        clearInterval(botPolling.interval);
+        botPolling.interval = null;
+    }
+
+    // 持久化：标记轮询已停止
+    appConfig.bot.pollEnabled = false;
+    saveConfig(appConfig);
+
+    console.log(`[bot-poll] ⏹ 轮询已停止 (共处理 ${botPolling.totalMessages} 条消息, 自动下载 ${botPolling.autoDownloads} 个任务)`);
+    
+    return { 
+        success: true, 
+        message: 'Bot 监听已停止',
+        stats: {
+            totalMessages: botPolling.totalMessages,
+            autoDownloads: botPolling.autoDownloads,
+            errors: botPolling.errors
+        }
+    };
+}
+
+// ==================== 轮询 API ====================
+
+/**
+ * GET /api/bot/poll/status - 轮询状态查询
+ */
+app.get('/api/bot/poll/status', (req, res) => {
+    res.json({
+        active: botPolling.active,
+        lastPollTime: botPolling.lastPollTime,
+        totalMessages: botPolling.totalMessages,
+        autoDownloads: botPolling.autoDownloads,
+        errors: botPolling.errors,
+        lastUpdateId: botPolling.lastUpdateId
+    });
+});
+
+/**
+ * POST /api/bot/poll/start - 启动轮询
+ */
+app.post('/api/bot/poll/start', (req, res) => {
+    const result = startBotPolling();
+    res.json(result);
+});
+
+/**
+ * POST /api/bot/poll/stop - 停止轮询
+ */
+app.post('/api/bot/poll/stop', (req, res) => {
+    const result = stopBotPolling();
+    res.json(result);
+});
 
 // ==================== 代理配置（兼容持久化）====================
 
@@ -1144,6 +1684,9 @@ function startTdlDownload(taskId, taskDir) {
             
             // 即使出错也扫描一下已下载的文件
             scanDownloadedFiles(task, taskDir);
+
+            // ====== Bot 通知：下载失败 ======
+            notifyBotDownloadError(task, errorDetail);
         }
 
         task.process = null;
@@ -1155,6 +1698,9 @@ function startTdlDownload(taskId, taskDir) {
         task.error = err.message;
         scanDownloadedFiles(task, taskDir);
         task.process = null;
+
+        // ====== Bot 通知：下载失败（启动异常）======
+        notifyBotDownloadError(task, err.message);
     });
 
     // 超时保护 (2 小时)
@@ -1296,6 +1842,47 @@ function finishTask(task, taskDir) {
     }
 
     addLog(task, `✅ 下载完成！共 ${task.downloadedFiles?.length || 0} 个文件`);
+
+    // ====== Bot 通知（异步，不阻塞主流程）======
+    const botCfg = getBotConfig();
+    if (botCfg.enabled && botCfg.token && botCfg.chatId) {
+        const fileCount = task.downloadedFiles?.length || 0;
+        const totalSize = formatSize(task.downloadedBytes || 0);
+        const elapsed = task.startTime ? formatDuration(Date.now() - task.startTime) : '--';
+        
+        let fileListText = '';
+        if (task.downloadedFiles && task.downloadedFiles.length <= 10) {
+            fileListText = task.downloadedFiles.slice(0, 10).map(f => 
+                `  · ${f.name} (${formatSize(f.size)})`
+            ).join('\n');
+            if (task.downloadedFiles.length > 10) {
+                fileListText += `\n  ... 等共 ${fileCount} 个文件`;
+            }
+        } else if (fileCount > 0) {
+            fileListText = `  共 ${fileCount} 个文件，总计 ${totalSize}`;
+        }
+
+        // 根据任务来源构建不同通知内容
+        const isBotSource = task.source === 'bot';
+        const sourceLine = isBotSource 
+            ? '\n📨 ' + (task.sourceInfo || 'Bot 自动下载') 
+            : '';
+
+        sendTelegramMessage(
+            '🎉 <b>下载完成</b>' + sourceLine + '\n\n'
+            + '📁 文件数: <b>' + fileCount + '</b> 个\n'
+            + '💾 总大小: <b>' + totalSize + '</b>\n'
+            + '⏱ 耗时: <b>' + elapsed + '</b>'
+            + (isBotSource && task.urls?.[0] ? '\n🔗 <code>' + escapeHtml(task.urls[0]) + '</code>' : '')
+            + (fileListText ? '\n\n📋 文件列表:\n<code>' + escapeHtml(fileListText) + '</code>' : '')
+        ).then(r => {
+            if (r.success) {
+                addLog(task, '🤖 Bot 通知已发送');
+            } else {
+                addLog(task, '⚠️ Bot 通知发送失败: ' + r.error);
+            }
+        });
+    }
 }
 
 /**
@@ -1337,12 +1924,36 @@ function addLog(task, msg) {
 
 // ==================== 工具函数 ====================
 
+/**
+ * HTML 转义（防止 XSS）
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function formatSize(bytes) {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/**
+ * 格式化耗时（毫秒 → MM:SS）
+ */
+function formatDuration(ms) {
+    if (!ms) return '00:00';
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 // ==================== 启动服务器 ====================
@@ -1354,4 +1965,14 @@ app.listen(PORT, () => {
 ║   引擎: tdl v0.20.2                   ║
 ╚══════════════════════════════════════╝
     `);
+
+    // 自动恢复轮询（如果之前是开启状态）
+    const botCfg = getBotConfig();
+    if (botCfg.pollEnabled && botCfg.enabled && botCfg.token && botCfg.chatId) {
+        console.log('[bot-poll] 检测到之前轮询已启用，自动恢复...');
+        // 稍等 3 秒让服务器完全就绪再启动轮询（避免代理还没准备好）
+        setTimeout(() => {
+            startBotPolling();
+        }, 3000);
+    }
 });
