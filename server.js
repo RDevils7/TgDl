@@ -86,7 +86,9 @@ const defaultConfig = {
         rewriteExt: false,
         template: '',
         delay: '',
-        reconnect: ''
+        reconnect: '',
+        renameFolder: false,
+        folderNameTemplate: '{channel}_{date}'
     },
     bot: {
         enabled: false,
@@ -728,12 +730,94 @@ app.post('/api/download-settings', (req, res) => {
         rewriteExt: !!dl.rewriteExt,
         template: (dl.template || '').trim(),
         delay: (dl.delay || '').trim(),
-        reconnect: (dl.reconnect || '').trim()
+        reconnect: (dl.reconnect || '').trim(),
+        renameFolder: !!dl.renameFolder,
+        folderNameTemplate: (dl.folderNameTemplate || '{channel}_{date}').trim()
     };
     saveConfig(appConfig);
     console.log(`[download-settings] 已保存全局默认配置`);
     res.json({ success: true });
 });
+
+/**
+ * 根据模板生成文件夹名，并在下载完成后重命名任务目录
+ * 可用变量：{channel} {date} {datetime} {title} {id} {msgid}
+ */
+function renameTaskFolder(task, oldDir) {
+    try {
+        const dlCfg = getDlConfig();
+        if (!dlCfg.renameFolder) return oldDir;
+
+        const tmpl = dlCfg.folderNameTemplate || '{channel}_{date}';
+
+        // 从 URL 解析频道名
+        const url = task.urls && task.urls[0] ? task.urls[0] : '';
+        let channel = '';
+        let msgid = '';
+        const privateMatch = url.match(/t\.me\/c\/(\d+)\/(\d+)/);
+        const publicMatch  = url.match(/t\.me\/([a-zA-Z_0-9]+)\/(\d+)/);
+        if (privateMatch) { channel = privateMatch[1]; msgid = privateMatch[2]; }
+        else if (publicMatch) { channel = publicMatch[1]; msgid = publicMatch[2]; }
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const date = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+        const datetime = `${date}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+
+        // 文件标题：优先用唯一文件名，否则用 channel
+        let title = '';
+        if (task.downloadedFiles && task.downloadedFiles.length === 1) {
+            title = task.downloadedFiles[0].name.replace(/\.[^.]+$/, ''); // 去扩展名
+        } else {
+            title = channel;
+        }
+
+        let folderName = tmpl
+            .replace(/\{channel\}/gi, channel || 'unknown')
+            .replace(/\{date\}/gi,    date)
+            .replace(/\{datetime\}/gi, datetime)
+            .replace(/\{title\}/gi,   title || 'download')
+            .replace(/\{id\}/gi,      task.id ? task.id.slice(0, 8) : 'noId')
+            .replace(/\{msgid\}/gi,   msgid || '0');
+
+        // 去掉 Windows/Linux 非法字符，限制长度
+        folderName = folderName
+            .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+            .replace(/\.+$/, '')        // 不能以 . 结尾
+            .replace(/\s+/g, '_')
+            .slice(0, 128)
+            .trim() || date;
+
+        const newDir = path.join(path.dirname(oldDir), folderName);
+
+        // 如果目标目录已存在，则加 _2 _3 后缀，避免冲突
+        let finalDir = newDir;
+        let suffix = 2;
+        while (fs.existsSync(finalDir) && finalDir !== oldDir) {
+            finalDir = newDir + '_' + suffix++;
+        }
+
+        if (finalDir !== oldDir) {
+            fs.renameSync(oldDir, finalDir);
+            // 同步更新 task 中所有路径引用
+            if (task.downloadedFiles) {
+                task.downloadedFiles = task.downloadedFiles.map(f => ({
+                    ...f,
+                    url: `/api/file/${task.id}/${encodeURIComponent(f.name)}`
+                }));
+            }
+            task.taskDir = finalDir;
+            console.log(`[rename] ${path.basename(oldDir)} → ${path.basename(finalDir)}`);
+            addLog(task, `📁 文件夹已重命名: ${path.basename(finalDir)}`);
+        }
+
+        return finalDir;
+    } catch (e) {
+        console.error('[rename] 重命名失败:', e.message);
+        addLog(task, `⚠️ 文件夹重命名失败: ${e.message}`);
+        return oldDir;
+    }
+}
 
 /**
  * 解析 Telegram 链接
@@ -1491,11 +1575,12 @@ app.get('/api/files/:taskId', (req, res) => {
     const task = tasks.get(req.params.taskId);
     if (!task || task.status !== 'completed') return res.status(404).json({ error: '无文件' });
 
-    const taskDir = path.join(DOWNLOAD_DIR, req.params.taskId);
+    // 优先使用重命名后的目录，否则回退到默认路径
+    const taskDir = task.taskDir || path.join(DOWNLOAD_DIR, req.params.taskId);
     let files = [];
     try {
         files = fs.readdirSync(taskDir)
-            .filter(f => f !== '.progress')
+            .filter(f => f !== '.progress' && !f.startsWith('.'))
             .map(f => ({
                 name: f,
                 size: fs.statSync(path.join(taskDir, f)).size,
@@ -1503,18 +1588,31 @@ app.get('/api/files/:taskId', (req, res) => {
             }));
     } catch (e) {}
 
-    res.json({ files, dir: taskDir });
+    res.json({ files, dir: taskDir, folderName: path.basename(taskDir) });
 });
 
 /**
  * GET /api/file/:taskid/:filename - 下载单个文件
+ * 支持重命名后的目录：优先从 task.taskDir 查找，找不到再回退默认路径
  */
 app.get('/api/file/:taskId/:filename', (req, res) => {
-    const filePath = path.join(DOWNLOAD_DIR, req.params.taskId, decodeURIComponent(req.params.filename));
+    const task = tasks.get(req.params.taskId);
+    const filename = decodeURIComponent(req.params.filename);
+
+    // 优先使用重命名后路径
+    const resolvedDir = (task && task.taskDir) || path.join(DOWNLOAD_DIR, req.params.taskId);
+    const filePath = path.join(resolvedDir, filename);
+
     if (fs.existsSync(filePath)) {
         res.download(filePath);
     } else {
-        res.status(404).json({ error: '文件不存在' });
+        // 容错：回退默认路径
+        const fallback = path.join(DOWNLOAD_DIR, req.params.taskId, filename);
+        if (fs.existsSync(fallback)) {
+            res.download(fallback);
+        } else {
+            res.status(404).json({ error: '文件不存在' });
+        }
     }
 });
 
@@ -1849,6 +1947,9 @@ function finishTask(task, taskDir) {
     } else if (task.downloadedFiles && task.downloadedFiles.length > 0) {
         task.fileName = `${task.downloadedFiles.length} 个文件`;
     }
+
+    // 下载完成后重命名文件夹（如已配置）
+    const finalDir = renameTaskFolder(task, taskDir);
 
     addLog(task, `✅ 下载完成！共 ${task.downloadedFiles?.length || 0} 个文件`);
 

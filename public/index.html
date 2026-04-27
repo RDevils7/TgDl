@@ -303,6 +303,28 @@
                                 <input type="text" id="setDefaultReconnect" class="styled-input-sm" placeholder="5m0s" />
                             </div>
                         </div>
+
+                        <!-- 文件夹重命名 -->
+                        <div class="toggle-row" style="margin-top:10px;">
+                            <span style="font-size:0.85rem;color:var(--text-secondary);">完成后重命名文件夹</span>
+                            <label class="toggle-option" style="margin:0;">
+                                <input type="checkbox" id="setRenameFolder" onchange="updateRenameFolderRow()" />
+                                <span class="toggle-switch-sm"></span>
+                            </label>
+                        </div>
+                        <div class="option-group" id="renameFolderTemplateRow" style="margin-top:6px; display:none;">
+                            <label style="font-size:0.8rem;color:var(--text-secondary);">文件夹名模板</label>
+                            <input type="text" id="setFolderNameTemplate" class="styled-input"
+                                   placeholder="{channel}_{date}" />
+                            <div style="font-size:0.74rem;color:var(--text-muted);margin-top:3px;line-height:1.5;">
+                                可用变量：<code>{channel}</code> 频道名 &nbsp;
+                                <code>{date}</code> 日期(yyyyMMdd) &nbsp;
+                                <code>{datetime}</code> 日期时间 &nbsp;
+                                <code>{title}</code> 文件标题 &nbsp;
+                                <code>{msgid}</code> 消息ID &nbsp;
+                                <code>{id}</code> 任务ID前8位
+                            </div>
+                        </div>
                     </div>
                 </details>
 

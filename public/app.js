@@ -603,6 +603,11 @@ async function loadDlSettings() {
         if (dl.delay !== undefined) $('#setDefaultDelay').value = dl.delay || '';
         if (dl.reconnect !== undefined) $('#setDefaultReconnect').value = dl.reconnect || '';
 
+        // 文件夹重命名设置
+        $('#setRenameFolder').checked = !!dl.renameFolder;
+        if (dl.folderNameTemplate !== undefined) $('#setFolderNameTemplate').value = dl.folderNameTemplate || '{channel}_{date}';
+        updateRenameFolderRow();
+
         // 同步下载面板的「跟随」提示文字
         updateDlPanelPlaceholder(dl);
 
@@ -632,7 +637,9 @@ async function saveDlSettings() {
         rewriteExt: $('#setDefaultRewriteExt').checked,
         template: $('#setDefaultTemplate').value.trim(),
         delay: $('#setDefaultDelay').value.trim(),
-        reconnect: $('#setDefaultReconnect').value.trim()
+        reconnect: $('#setDefaultReconnect').value.trim(),
+        renameFolder: $('#setRenameFolder').checked,
+        folderNameTemplate: ($('#setFolderNameTemplate').value || '{channel}_{date}').trim()
     };
 
     try {
@@ -660,6 +667,12 @@ function showDlSettingsHint(msg, type) {
     el.className = `conn-test-result ${type === 'success' ? 'conn-test-ok' : 'conn-test-err'}`;
     el.classList.remove('hidden');
     setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+/** 根据「完成后重命名文件夹」开关状态显示/隐藏模板输入框 */
+function updateRenameFolderRow() {
+    const row = $('#renameFolderTemplateRow');
+    if (row) row.style.display = $('#setRenameFolder').checked ? '' : 'none';
 }
 
 /**
