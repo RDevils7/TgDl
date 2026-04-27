@@ -88,7 +88,7 @@ const defaultConfig = {
         delay: '',
         reconnect: '',
         renameFolder: false,
-        folderNameTemplate: '{channel}_{date}'
+        folderNameTemplate: '{title}'
     },
     bot: {
         enabled: false,
@@ -732,7 +732,7 @@ app.post('/api/download-settings', (req, res) => {
         delay: (dl.delay || '').trim(),
         reconnect: (dl.reconnect || '').trim(),
         renameFolder: !!dl.renameFolder,
-        folderNameTemplate: (dl.folderNameTemplate || '{channel}_{date}').trim()
+        folderNameTemplate: (dl.folderNameTemplate || '{title}').trim()
     };
     saveConfig(appConfig);
     console.log(`[download-settings] 已保存全局默认配置`);
@@ -743,12 +743,14 @@ app.post('/api/download-settings', (req, res) => {
  * 根据模板生成文件夹名，并在下载完成后重命名任务目录
  * 可用变量：{channel} {date} {datetime} {title} {id} {msgid}
  */
+/**
+ * 下载完成后自动将 UUID 文件夹重命名为文件名
+ * - 默认行为（无需开启）：单文件 → 取文件名（去扩展名）；多文件 → 第一个文件名
+ * - 用户可在设置中自定义模板（renameFolder 开关控制是否使用模板覆盖默认行为）
+ */
 function renameTaskFolder(task, oldDir) {
     try {
         const dlCfg = getDlConfig();
-        if (!dlCfg.renameFolder) return oldDir;
-
-        const tmpl = dlCfg.folderNameTemplate || '{channel}_{date}';
 
         // 从 URL 解析频道名
         const url = task.urls && task.urls[0] ? task.urls[0] : '';
@@ -764,13 +766,18 @@ function renameTaskFolder(task, oldDir) {
         const date = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
         const datetime = `${date}_${pad(now.getHours())}${pad(now.getMinutes())}`;
 
-        // 文件标题：优先用唯一文件名，否则用 channel
+        // 文件标题：优先用文件名（单文件取唯一，多文件取第一个），否则 fallback 到 channel
         let title = '';
-        if (task.downloadedFiles && task.downloadedFiles.length === 1) {
+        if (task.downloadedFiles && task.downloadedFiles.length >= 1) {
             title = task.downloadedFiles[0].name.replace(/\.[^.]+$/, ''); // 去扩展名
         } else {
             title = channel;
         }
+
+        // 默认模板：直接用文件名；用户开启了 renameFolder 则使用其自定义模板
+        const tmpl = (dlCfg.renameFolder && dlCfg.folderNameTemplate)
+            ? dlCfg.folderNameTemplate
+            : '{title}';
 
         let folderName = tmpl
             .replace(/\{channel\}/gi, channel || 'unknown')

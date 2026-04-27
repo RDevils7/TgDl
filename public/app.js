@@ -605,7 +605,7 @@ async function loadDlSettings() {
 
         // 文件夹重命名设置
         $('#setRenameFolder').checked = !!dl.renameFolder;
-        if (dl.folderNameTemplate !== undefined) $('#setFolderNameTemplate').value = dl.folderNameTemplate || '{channel}_{date}';
+        if (dl.folderNameTemplate !== undefined) $('#setFolderNameTemplate').value = dl.folderNameTemplate || '{title}';
         updateRenameFolderRow();
 
         // 同步下载面板的「跟随」提示文字
@@ -639,7 +639,7 @@ async function saveDlSettings() {
         delay: $('#setDefaultDelay').value.trim(),
         reconnect: $('#setDefaultReconnect').value.trim(),
         renameFolder: $('#setRenameFolder').checked,
-        folderNameTemplate: ($('#setFolderNameTemplate').value || '{channel}_{date}').trim()
+        folderNameTemplate: ($('#setFolderNameTemplate').value || '{title}').trim()
     };
 
     try {
