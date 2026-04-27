@@ -368,19 +368,28 @@ function extractTelegramUrls(text) {
 
     const urls = [];
 
-    // 匹配 t.me 和 telegram.me 链接
-    // 匹配 t.me/xxx/123 或 t.me/xxx 或 https://t.me/xxx/123 等
-    const urlRegex = /(?:https?:\/\/)?(?:t\.me|telegram\.me)\/([a-zA-Z_][\w_]*)(?:\/(\d+))?/gi;
+    // 匹配两种格式：
+    // 1. 公开频道：t.me/username/123
+    // 2. 私有频道：t.me/c/频道数字ID/消息ID（必须包含消息ID才能下载）
+    const urlRegex = /(?:https?:\/\/)?(?:t\.me|telegram\.me)\/(c\/\d+\/\d+|[a-zA-Z_][\w_]*(?:\/\d+)?)/gi;
     let match;
     while ((match = urlRegex.exec(text)) !== null) {
-        const fullUrl = match[0].startsWith('http') ? match[0] : 'https://' + match[0];
+        const raw = match[0];
+        const path = match[1]; // e.g. "c/1234567/89" 或 "username/123" 或 "username"
+
+        // 私有频道必须有消息ID（格式 c/频道ID/消息ID）才可下载，否则跳过
+        if (path.startsWith('c/')) {
+            const parts = path.split('/');
+            if (parts.length < 3 || !parts[2]) {
+                console.log('[extract] 跳过不完整的私有频道链接（缺少消息ID）:', raw);
+                continue;
+            }
+        }
+
+        const fullUrl = raw.startsWith('http') ? raw : 'https://' + raw;
         // 去重
         if (!urls.find(u => u.url === fullUrl)) {
-            urls.push({
-                url: fullUrl,
-                channel: match[1],
-                messageId: match[2] || null
-            });
+            urls.push({ url: fullUrl });
         }
     }
 
